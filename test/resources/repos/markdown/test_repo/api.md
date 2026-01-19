@@ -15,6 +15,7 @@ The main client class for interacting with the API.
 Establishes a connection to the server.
 
 **Parameters:**
+
 - `host`: Server hostname
 - `port`: Server port number
 
@@ -47,6 +48,7 @@ Server-side implementation.
 Initializes the system with the provided configuration.
 
 **Parameters:**
+
 - `config`: Configuration dictionary
 
 **Example:**

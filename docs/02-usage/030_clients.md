@@ -5,12 +5,13 @@ as well as specific instructions for popular clients.
 
 :::{note}
 The configurations we provide for particular clients below will run the latest version of Serena
-using the `stdio` protocol with `uvx`.  
-Adapt the commands to your preferred way of [running Serena](020_running), adding any additional
+using the `stdio` protocol with `uvx`.
+Adapt the commands to your preferred way of [running Serena](./020_running.md), adding any additional
 command-line arguments as needed.
 :::
 
 (clients-general-instructions)=
+
 ## General Instructions
 
 In general, Serena can be used with any MCP-enabled client.
@@ -18,22 +19,23 @@ To connect Serena to your favourite client, simply
 
 1. determine how to add a custom MCP server to your client (refer to the client's documentation).
 2. add a new MCP server entry by specifying either
-    * a [run command](start-mcp-server) that allows the client to start the MCP server in stdio mode as a subprocess, or
-    * the URL of the HTTP/SSE endpoint, having started the [Serena MCP server in HTTP/SSE mode](streamable-http) beforehand.
+   - a [run command](#start server) that allows the client to start the MCP server in stdio mode as a subprocess, or
+   - the URL of the HTTP/SSE endpoint, having started the [Serena MCP server in HTTP/SSE mode](./020_running.md#streamable-http-mode) beforehand.
 
 Find concrete examples for popular clients below.
 
 Depending on your needs, you might want to further customize Serena's behaviour by
-* [adding command-line arguments](mcp-args)
-* [adjusting configuration](050_configuration).
+
+- [adding command-line arguments](./020_running.md.md#mcp-server-command-line-arguments)
+- [adjusting configuration](050_configuration.md).
 
 **Mode of Operation**.
 Note that some clients have a per-workspace MCP configuration (e.g, VSCode and Claude Code),
 while others have a global MCP configuration (e.g. Codex and Claude Desktop).
 
-- In the per-workspace case, you typically want to start Serena with your workspace directory as the project directory 
+- In the per-workspace case, you typically want to start Serena with your workspace directory as the project directory
   and never switch to a different project. This is achieved by specifying the
-  `--project <path>` argument with a single-project [context](#contexts) (e.g. `ide` or `claude-code`).
+  `--project <path>` argument with a single-project [context](./050_configuration.md#contexts) (e.g. `ide` or `claude-code`).
 - In the global configuration case, you must first activate the project you want to work on, which you can do by asking
   the LLM to do so (e.g., "Activate the current dir as project using serena"). In such settings, the `activate_project`
   tool is required.
@@ -41,10 +43,11 @@ while others have a global MCP configuration (e.g. Codex and Claude Desktop).
 **Tool Selection**.
 While you may be able to turn off tools through your client's interface (e.g., in VSCode or Claude Desktop),
 we recommend selecting your base tool set through Serena's configuration, as Serena's prompts automatically
-adjust based on which tools are enabled/disabled.  
-A key mechanism for this is to use the appropriate [context](#contexts) when starting Serena.
+adjust based on which tools are enabled/disabled.
+A key mechanism for this is to use the appropriate [context](050_configuration.md#contexts) when starting Serena.
 
 (clients-common-pitfalls)=
+
 ### Common Pitfalls
 
 **Escaping Paths Correctly**.
@@ -65,7 +68,7 @@ An easy fix is to add them explicitly to the MCP server entry.
 For example, in Claude Desktop and other clients, you can simply add an `env` key to the `serena`
 object, e.g.
 
-```
+```json
 "env": {
     "DOTNET_ROOT": "/opt/homebrew/Cellar/dotnet/9.0.8/libexec"
 }
@@ -75,7 +78,7 @@ object, e.g.
 
 Serena is a great way to make Claude Code both cheaper and more powerful!
 
-**Per-Project Configuration.** To add the Serena MCP server to the current project in the current directory, 
+**Per-Project Configuration.** To add the Serena MCP server to the current project in the current directory,
 use this command:
 
 ```shell
@@ -83,11 +86,12 @@ claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena 
 ```
 
 Note:
-  * We use the `claude-code` context to disable unnecessary tools (avoiding duplication
-    with Claude Code's built-in capabilities).
-  * We specify the current directory as the project directory with `--project "$(pwd)"`, such 
-    that Serena is configured to work on the current project from the get-go, following 
-    Claude Code's mode of operation.
+
+- We use the `claude-code` context to disable unnecessary tools (avoiding duplication
+  with Claude Code's built-in capabilities).
+- We specify the current directory as the project directory with `--project "$(pwd)"`, such
+  that Serena is configured to work on the current project from the get-go, following
+  Claude Code's mode of operation.
 
 **Global Configuration**. Alternatively, use `--project-from-cwd` for user-level configuration that works across all projects:
 
@@ -96,23 +100,27 @@ claude mcp add --scope user serena -- uvx --from git+https://github.com/oraios/s
 ```
 
 Whenever you start Claude Code, Serena will search up from the current directory for `.serena/project.yml` or `.git` markers,
-activating the current directory as the project if neither is found. 
+activating the current directory as the project if neither is found.
 This mechanism makes it suitable for a single global MCP configuration.
 
-**Maximum Token Efficiency.** To maximize token efficiency, you may want to use Claude Code's 
-*on-demand tool loading* feature, which is supported since at least v2.0.74 of Claude Code.
+**Maximum Token Efficiency.** To maximize token efficiency, you may want to use Claude Code's
+_on-demand tool loading_ feature, which is supported since at least v2.0.74 of Claude Code.
 This feature avoids sending all tool descriptions to Claude upon startup, thus saving tokens.
-Instead, Claude will search for tools as needed (but there are no guarantees that it will 
+Instead, Claude will search for tools as needed (but there are no guarantees that it will
 search optimally, of course).
-To enable this feature, set the environment variable `ENABLE_TOOL_SEARCH=true`.  
+To enable this feature, set the environment variable `ENABLE_TOOL_SEARCH=true`.
 Depending on your shell, you can also set this on a per-session basis, e.g. using
+
 ```shell
 ENABLE_TOOL_SEARCH=true claude
 ```
+
 in bash/zsh, or using
+
 ```shell
 set ENABLE_TOOL_SEARCH=true && claude
 ```
+
 in Windows CMD to launch Claude Code.
 
 ## VSCode
@@ -147,7 +155,7 @@ While serena can be directly installed from the GitHub MCP server registry, we r
 
 Serena works with OpenAI's Codex CLI out of the box, but you have to use the `codex` context for it to work properly. (The technical reason is that Codex doesn't fully support the MCP specifications, so some massaging of tools is required.).
 
-Add a [run command](020_running) to `~/.codex/config.toml` to configure Serena for all Codex sessions;
+Add a [run command](./020_running.md) to `~/.codex/config.toml` to configure Serena for all Codex sessions;
 create the file if it does not exist.
 For example, when using `uvx`, add the following section:
 
@@ -198,7 +206,7 @@ Add the `serena` MCP server configuration
 ```
 
 If your language server requires specific environment variables to be set (e.g. F# on macOS with Homebrew),
-you can add them via an `env` key (see [above](#clients-common-pitfalls)).
+you can add them via an `env` key (see [above](#common-pitfalls)).
 
 Once you have created the new MCP server entry, save the config and then restart Claude Desktop.
 
@@ -272,7 +280,7 @@ Then make sure to configure the working directory to be the project root.
 :::{warning}
 At the time of writing (12/2025), Antigravity does not seem to work with Serena due to schema validation issues
 which are beyond our control.
-The client starts Serena but then crashes with `[internal] marshal message: string field contains invalid UTF-8`.  
+The client starts Serena but then crashes with `[internal] marshal message: string field contains invalid UTF-8`.
 Nevertheless, we provide a configuration that should work once the issue is resolved.
 :::
 
@@ -298,22 +306,22 @@ Add this configuration:
 
 ## Other Clients
 
-For other clients, follow the [general instructions](#clients-general-instructions) above to set up Serena as an MCP server.
+For other clients, follow the [general instructions](#general-instructions) above to set up Serena as an MCP server.
 
 ### Terminal-Based Clients
 
 There are many terminal-based coding assistants that support MCP servers, such as
 
- * [Gemini-CLI](https://github.com/google-gemini/gemini-cli), 
- * [Qwen3-Coder](https://github.com/QwenLM/Qwen3-Coder),
- * [rovodev](https://community.atlassian.com/forums/Rovo-for-Software-Teams-Beta/Introducing-Rovo-Dev-CLI-AI-Powered-Development-in-your-terminal/ba-p/3043623),
- * [OpenHands CLI](https://docs.all-hands.dev/usage/how-to/cli-mode) and
- * [opencode](https://github.com/sst/opencode).
+- [Gemini-CLI](https://github.com/google-gemini/gemini-cli),
+- [Qwen3-Coder](https://github.com/QwenLM/Qwen3-Coder),
+- [rovodev](https://community.atlassian.com/forums/Rovo-for-Software-Teams-Beta/Introducing-Rovo-Dev-CLI-AI-Powered-Development-in-your-terminal/ba-p/3043623),
+- [OpenHands CLI](https://docs.all-hands.dev/usage/how-to/cli-mode) and
+- [opencode](https://github.com/sst/opencode).
 
 They generally benefit from the symbolic tools provided by Serena. You might want to customize some aspects of Serena
 by writing your own context, modes or prompts to adjust it to the client's respective internal capabilities (and your general workflow).
 
-In most cases, the `ide` context is likely to be appropriate for such clients, i.e. add the arguments `--context ide` 
+In most cases, the `ide` context is likely to be appropriate for such clients, i.e. add the arguments `--context ide`
 in order to reduce tool duplication.
 
 ### MCP-Enabled IDEs and Coding Clients (Cline, Roo-Code, Cursor, Windsurf, etc.)
@@ -321,7 +329,7 @@ in order to reduce tool duplication.
 Most of the popular existing coding assistants (e.g. IDE extensions) and AI-enabled IDEs themselves support connections
 to MCP Servers. Serena generally boosts performance by providing efficient tools for symbolic operations.
 
-We generally recommend to use the `ide` context for these integrations by adding the arguments `--context ide` 
+We generally recommend to use the `ide` context for these integrations by adding the arguments `--context ide`
 in order to reduce tool duplication.
 
 ### Local GUIs and Agent Frameworks
@@ -330,10 +338,10 @@ Over the last months, several technologies have emerged that allow you to run a 
 and connect it to an MCP server. The respective applications will typically work with Serena out of the box.
 Some of the leading open source GUI applications are
 
-  * [Jan](https://jan.ai/docs/mcp), 
-  * [OpenHands](https://github.com/All-Hands-AI/OpenHands/),
-  * [OpenWebUI](https://docs.openwebui.com/openapi-servers/mcp) and 
-  * [Agno](https://docs.agno.com/introduction/playground).
+- [Jan](https://jan.ai/docs/mcp),
+- [OpenHands](https://github.com/All-Hands-AI/OpenHands/),
+- [OpenWebUI](https://docs.openwebui.com/openapi-servers/mcp) and
+- [Agno](https://docs.agno.com/introduction/playground).
 
-These applications allow to combine Serena with almost any LLM (including locally running ones) 
+These applications allow to combine Serena with almost any LLM (including locally running ones)
 and offer various other integrations.

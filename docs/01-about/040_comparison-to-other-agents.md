@@ -1,7 +1,7 @@
 # Comparison with Other Coding Agents
 
 To our knowledge, Serena is the first fully-featured coding agent where the
-entire functionality is made available through an MCP server, 
+entire functionality is made available through an MCP server,
 thus not requiring additional API keys or subscriptions if access to an LLM
 is already available through an MCP-compatible client.
 
@@ -16,14 +16,14 @@ Serena has the advantage of not requiring a subscription.
 
 More technical differences are:
 
-* Serena navigates and edits code using a language server, so it has a symbolic
+- Serena navigates and edits code using a language server, so it has a symbolic
   understanding of the code.
   IDE-based tools often use a text search-based or purely text file-based approach, which is often
   less powerful, especially for large codebases.
-* Serena is not bound to a specific interface (IDE or CLI).
+- Serena is not bound to a specific interface (IDE or CLI).
   Serena's MCP server can be used with any MCP client (including some IDEs).
-* Serena is not bound to a specific large language model or API.
-* Serena is open-source and has a small codebase, so it can be easily extended
+- Serena is not bound to a specific large language model or API.
+- Serena is open-source and has a small codebase, so it can be easily extended
   and modified.
 
 ## API-Based Coding Agents

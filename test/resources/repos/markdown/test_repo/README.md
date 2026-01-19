@@ -38,7 +38,7 @@ def hello_world():
 
 ```javascript
 function greet(name) {
-    console.log(`Hello, ${name}!`);
+  console.log(`Hello, ${name}!`);
 }
 ```
 

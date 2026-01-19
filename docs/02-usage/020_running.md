@@ -2,9 +2,10 @@
 
 Serena is a command-line tool with a variety of sub-commands.
 This section describes
- * various ways of running Serena
- * how to run and configure the most important command, i.e. starting the MCP server
- * other useful commands.
+
+- various ways of running Serena
+- how to run and configure the most important command, i.e. starting the MCP server
+- other useful commands.
 
 ## Ways of Running Serena
 
@@ -14,14 +15,18 @@ as detailed below.
 
 In general, to get help, append `--help` to the command, i.e.
 
-    <serena> --help
-    <serena> <command> --help
+```bash
+<serena> --help
+<serena> <command> --help
+```
 
 ### Using uvx
 
 `uvx` is part of `uv`. It can be used to run the latest version of Serena directly from the repository, without an explicit local installation.
 
-    uvx --from git+https://github.com/oraios/serena serena 
+```bash
+uvx --from git+https://github.com/oraios/serena serena
+```
 
 Explore the CLI to see some of the customization options that serena provides (more info on them below).
 
@@ -29,23 +34,23 @@ Explore the CLI to see some of the customization options that serena provides (m
 
 1. Clone the repository and change into it.
 
-   ```shell
+   ```bash
    git clone https://github.com/oraios/serena
    cd serena
    ```
 
 2. Run Serena via
 
-   ```shell
-   uv run serena 
+   ```bash
+   uv run serena
    ```
 
-   when within the serena installation directory.   
+   when within the serena installation directory.
    From other directories, run it with the `--directory` option, i.e.
 
-   ```shell
-    uv run --directory /abs/path/to/serena serena
-    ```
+   ```bash
+   uv run --directory /abs/path/to/serena serena
+   ```
 
 :::{note}
 Adding the `--directory` option results in the working directory being set to the Serena directory.
@@ -53,22 +58,23 @@ As a consequence, you will need to specify paths when using CLI commands that wo
 :::
 
 (docker)=
-### Using Docker 
+
+### Using Docker
 
 The Docker approach offers several advantages:
 
-* better security isolation for shell command execution
-* no need to install language servers and dependencies locally
-* consistent environment across different systems
+- better security isolation for shell command execution
+- no need to install language servers and dependencies locally
+- consistent environment across different systems
 
 You can run the Serena MCP server directly via Docker as follows,
 assuming that the projects you want to work on are all located in `/path/to/your/projects`:
 
 ```shell
-docker run --rm -i --network host -v /path/to/your/projects:/workspaces/projects ghcr.io/oraios/serena:latest serena 
+docker run --rm -i --network host -v /path/to/your/projects:/workspaces/projects ghcr.io/oraios/serena:latest serena
 ```
 
-This command mounts your projects into the container under `/workspaces/projects`, so when working with projects, 
+This command mounts your projects into the container under `/workspaces/projects`, so when working with projects,
 you need to refer to them using the respective path (e.g. `/workspaces/projects/my-project`).
 
 Alternatively, you may use Docker compose with the `compose.yml` file provided in the repository.
@@ -89,18 +95,21 @@ nix run github:oraios/serena -- <command> [options]
 You can also install Serena by referencing this repo (`github:oraios/serena`) and using it in your Nix flake. The package is exported as `serena`.
 
 (start-mcp-server)=
+
 ## Running the MCP Server
 
 Given your preferred method of running Serena, you can start the MCP server using the `start-mcp-server` command:
 
-    <serena> start-mcp-server [options]  
+```bash
+<serena> start-mcp-server [options]
+```
 
 Note that no matter how you run the MCP server, Serena will, by default, start a web-based dashboard on localhost that will allow you to inspect
 the server's operations, logs, and configuration.
 
 :::{tip}
-By default, Serena will use language servers for code understanding and analysis.    
-With the [Serena JetBrains Plugin](025_jetbrains_plugin), we recently introduced a powerful alternative,
+By default, Serena will use language servers for code understanding and analysis.  
+With the [Serena JetBrains Plugin](./025_jetbrains_plugin.md), we recently introduced a powerful alternative,
 which has several advantages over the language server-based approach.
 :::
 
@@ -119,70 +128,86 @@ therefore needs to be configured with a launch command.
 
 Communication over stdio is the default for the Serena MCP server, so in the simplest
 case, you can simply run the `start-mcp-server` command without any additional options.
- 
-    <serena> start-mcp-server
+
+```bash
+<serena> start-mcp-server
+```
 
 For example, to run the server in stdio mode via `uvx`, you would run:
 
-    uvx --from git+https://github.com/oraios/serena serena start-mcp-server 
- 
-See the section ["Configuring Your MCP Client"](030_clients) for specific information on how to configure your MCP client (e.g. Claude Code, Codex, Cursor, etc.)
+```bash
+uvx --from git+https://github.com/oraios/serena serena start-mcp-server
+```
+
+See the section ["Configuring Your MCP Client"](./030_clients.md) for specific information on how to configure your MCP client (e.g. Claude Code, Codex, Cursor, etc.)
 to use such a launch command.
 
 (streamable-http)=
+
 ### Streamable HTTP Mode
 
-When using instead the *Streamable HTTP* mode, you control the server lifecycle yourself,
+When using instead the _Streamable HTTP_ mode, you control the server lifecycle yourself,
 i.e. you start the server and provide the client with the URL to connect to it.
 
 Simply provide `start-mcp-server` with the `--transport streamable-http` option and optionally provide the desired port
 via the `--port` option.
 
-    <serena> start-mcp-server --transport streamable-http --port <port>
+```bash
+<serena> start-mcp-server --transport streamable-http --port <port>
+```
 
 For example, to run the Serena MCP server in streamable HTTP mode on port 9121 using uvx,
 you would run
 
-    uvx --from git+https://github.com/oraios/serena serena start-mcp-server --transport streamable-http --port 9121
+```bash
+uvx --from git+https://github.com/oraios/serena serena start-mcp-server --transport streamable-http --port 9121
+```
 
 and then configure your client to connect to `http://localhost:9121/mcp`.
 
 Note that while the legacy SSE transport is also supported (via `--transport sse` with corresponding /sse endpoint), its use is discouraged.
 
 (mcp-args)=
+
 ### MCP Server Command-Line Arguments
 
 The Serena MCP server supports a wide range of additional command-line options.
 Use the command
 
-    <serena> start-mcp-server --help
+```bash
+<serena> start-mcp-server --help
+```
 
 to get a list of all available options.
 
 Some useful options include:
 
-  * `--project <path|name>`: specify the project to work on by name or path.
-  * `--project-from-cwd`: auto-detect the project from current working directory   
-    (looking for a directory containing `.serena/project.yml` or `.git` in parent directories, activating the current directory if none is found);  
-    This option is intended for CLI-based agents like Claude Code, Gemini and Codex, which are typically started from within the project directory
-    and which do not change directories during their operation.
-  * `--language-backend JetBrains`: use the Serena JetBrains Plugin as the language backend (overriding the default backend configured in the central configuration)
-  * `--context <context>`: specify the operation [context](contexts) in which Serena shall operate
-  * `--mode <mode>`: specify one or more [modes](modes) to enable (can be passed several times)
-  * `--open-web-dashboard <true|false>`: whether to open the web dashboard on startup (enabled by default)
+- `--project <path|name>`: specify the project to work on by name or path.
+- `--project-from-cwd`: auto-detect the project from current working directory  
+  (looking for a directory containing `.serena/project.yml` or `.git` in parent directories, activating the current directory if none is found);  
+  This option is intended for CLI-based agents like Claude Code, Gemini and Codex, which are typically started from within the project directory
+  and which do not change directories during their operation.
+- `--language-backend JetBrains`: use the Serena JetBrains Plugin as the language backend (overriding the default backend configured in the central configuration)
+- `--context <context>`: specify the operation [context](./050_configuration.md#contexts) in which Serena shall operate
+- `--mode <mode>`: specify one or more [modes](#standard-io-mode) to enable (can be passed several times)
+- `--open-web-dashboard <true|false>`: whether to open the web dashboard on startup (enabled by default)
 
 ## Other Commands
 
-Serena provides several other commands in addition to `start-mcp-server`, 
+Serena provides several other commands in addition to `start-mcp-server`,
 most of which are related to project setup and configuration.
 
 To get a list of available commands, run:
 
-    <serena> --help
+```bash
+<serena> --help
+```
 
 To get help on a specific command, run:
 
-    <serena> <command> --help
+```bash
+<serena> <command> --help
+```
 
 In general, add `--help` to any command or sub-command to get information about its usage and available options.
 
@@ -198,7 +223,7 @@ Here are some examples of commands you might find useful:
 # get detailed description of a specific tool
 <serena> tools description find_symbol
 
-# creating a new Serena project in the current directory 
+# creating a new Serena project in the current directory
 <serena> project create
 
 # creating and immediately indexing a project

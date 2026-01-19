@@ -8,3 +8,13 @@ line_length: false
 spaces: false
 url: false
 whitespace: false
+# Link text should be descriptive
+MD059: false
+# Multiple top-level headings in the same document
+MD025: false
+# First line in a file should be a top-level heading
+MD041: false
+# Multiple headings with the same content
+MD024: false
+# Trailing punctuation in heading
+MD026: false
