@@ -2,15 +2,19 @@
   "name": "serena Project",
   "dockerFile": "../Dockerfile",
   "workspaceFolder": "/workspaces/serena",
-  "settings": {
-    "terminal.integrated.shell.linux": "/bin/bash",
-    "python.pythonPath": "/usr/local/bin/python",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash",
+        "python.pythonPath": "/usr/local/bin/python"
+      }
+    }
   },
-  "extensions": [
-    "ms-python.python",
-    "ms-toolsai.jupyter",
-    "ms-python.vscode-pylance"
-  ],
   "forwardPorts": [],
-  "remoteUser": "root",
+  "remoteUser": "root"
 }

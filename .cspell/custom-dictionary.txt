@@ -1,0 +1,26 @@
+# Custom Dictionary Words
+buildx
+Buildx
+ghcup
+GOARCH
+GOFLAGS
+Intelephense
+JDTLS
+Jered
+Junie
+Junie's
+luarocks
+mcpo
+mlapp
+mypy
+nixd
+nixpkgs
+oaicompat
+PSES
+pypi
+Qwen
+rovodev
+solidlsp
+Taplo
+Tkinter
+yamls
