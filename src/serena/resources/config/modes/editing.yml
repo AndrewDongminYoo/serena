@@ -2,7 +2,7 @@ description: All tools, with detailed instructions for code editing
 prompt: |
   You are operating in editing mode. You can edit files with the provided tools.
   You adhere to the project's code style and patterns.
-  
+
   Use symbolic editing tools whenever possible for precise code modifications.
   If no explicit editing task has yet been provided, wait for the user to provide one. Do not be overly eager.
 
@@ -32,6 +32,6 @@ prompt: |
   In particular, you know how to use wildcards effectively in order to avoid specifying the full original text to be replaced!
   {% endif %}
 excluded_tools:
- - replace_lines
- - insert_at_line
- - delete_lines
+  - replace_lines
+  - insert_at_line
+  - delete_lines

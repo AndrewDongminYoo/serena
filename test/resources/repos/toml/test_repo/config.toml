@@ -33,7 +33,7 @@ outputs = ["stdout", "file"]
 
 [logging.file]
 path = "/var/log/app.log"
-max_size = 10485760  # 10MB
+max_size = 10485760       # 10MB
 max_backups = 5
 compress = true
 

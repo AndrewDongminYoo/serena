@@ -1,12 +1,12 @@
 # Docker compose services definition
-version: '3.8'
+version: "3.8"
 
 services:
   web:
     image: nginx:latest
     ports:
-      - "80:80"
-      - "443:443"
+      - 80:80
+      - 443:443
     volumes:
       - ./html:/usr/share/nginx/html
     environment:
@@ -18,7 +18,7 @@ services:
   api:
     image: node:18
     ports:
-      - "3000:3000"
+      - 3000:3000
     depends_on:
       - database
     environment:
@@ -31,7 +31,7 @@ services:
   database:
     image: postgres:15
     ports:
-      - "5432:5432"
+      - 5432:5432
     environment:
       - POSTGRES_DB=mydb
       - POSTGRES_USER=admin
@@ -48,4 +48,4 @@ networks:
     driver: bridge
 
 volumes:
-  db-data:
+  db-data: # yamllint disable
