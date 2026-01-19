@@ -42,9 +42,17 @@ from typing import Any, Union, cast
 
 import requests
 
-from solidlsp.ls import LanguageServerDependencyProvider, LSPFileBuffer, SolidLanguageServer
+from solidlsp.ls import (
+    LanguageServerDependencyProvider,
+    LSPFileBuffer,
+    SolidLanguageServer,
+)
 from solidlsp.ls_config import LanguageServerConfig
-from solidlsp.lsp_protocol_handler.lsp_types import DocumentSymbol, InitializeParams, SymbolInformation
+from solidlsp.lsp_protocol_handler.lsp_types import (
+    DocumentSymbol,
+    InitializeParams,
+    SymbolInformation,
+)
 from solidlsp.settings import SolidLSPSettings
 
 log = logging.getLogger(__name__)

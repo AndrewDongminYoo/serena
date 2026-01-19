@@ -7,7 +7,11 @@ from typing import Any
 import pathspec
 from sensai.util.string import ToStringMixin
 
-from serena.config.serena_config import DEFAULT_TOOL_TIMEOUT, ProjectConfig, get_serena_managed_in_project_dir
+from serena.config.serena_config import (
+    DEFAULT_TOOL_TIMEOUT,
+    ProjectConfig,
+    get_serena_managed_in_project_dir,
+)
 from serena.constants import SERENA_FILE_ENCODING, SERENA_MANAGED_DIR_NAME
 from serena.ls_manager import LanguageServerFactory, LanguageServerManager
 from serena.text_utils import MatchedConsecutiveLines, search_files

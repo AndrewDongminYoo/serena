@@ -15,7 +15,13 @@ from pathlib import Path
 from typing import Literal
 
 from serena.text_utils import search_files
-from serena.tools import SUCCESS_RESULT, EditedFileContext, Tool, ToolMarkerCanEdit, ToolMarkerOptional
+from serena.tools import (
+    SUCCESS_RESULT,
+    EditedFileContext,
+    Tool,
+    ToolMarkerCanEdit,
+    ToolMarkerOptional,
+)
 from serena.util.file_system import scan_directory
 
 

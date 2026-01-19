@@ -33,7 +33,7 @@ class VariableContainer:
     # Class-level variable with type annotation
     typed_class_var: str = "typed value"
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Instance variables
         self.instance_var = "Initial instance value"
         self.reassignable_instance_var = 100
@@ -41,7 +41,7 @@ class VariableContainer:
         # Instance variable with type annotation
         self.typed_instance_var: list[str] = ["item1", "item2"]
 
-    def modify_instance_var(self):
+    def modify_instance_var(self) -> None:
         # Reassign instance variable
         self.instance_var = "Modified instance value"
         self.reassignable_instance_var = 200  # Reassigned

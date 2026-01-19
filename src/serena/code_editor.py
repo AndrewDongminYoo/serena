@@ -6,7 +6,13 @@ from collections.abc import Iterable, Iterator, Reversible
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Generic, Optional, TypeVar, cast
 
-from serena.symbol import JetBrainsSymbol, LanguageServerSymbol, LanguageServerSymbolRetriever, PositionInFile, Symbol
+from serena.symbol import (
+    JetBrainsSymbol,
+    LanguageServerSymbol,
+    LanguageServerSymbolRetriever,
+    PositionInFile,
+    Symbol,
+)
 from solidlsp import SolidLanguageServer, ls_types
 from solidlsp.ls import LSPFileBuffer
 from solidlsp.ls_utils import PathUtils, TextUtils

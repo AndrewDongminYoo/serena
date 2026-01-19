@@ -9,7 +9,10 @@ import pathlib
 import shutil
 import threading
 
-from solidlsp.language_servers.common import RuntimeDependency, RuntimeDependencyCollection
+from solidlsp.language_servers.common import (
+    RuntimeDependency,
+    RuntimeDependencyCollection,
+)
 from solidlsp.ls import DocumentSymbols, LSPFileBuffer, SolidLanguageServer
 from solidlsp.ls_config import LanguageServerConfig
 from solidlsp.lsp_protocol_handler.lsp_types import InitializeParams

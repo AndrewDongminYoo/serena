@@ -16,7 +16,11 @@ from solidlsp.language_servers.common import quote_windows_path
 from solidlsp.ls import SolidLanguageServer
 from solidlsp.ls_config import LanguageServerConfig
 from solidlsp.ls_types import SymbolKind, UnifiedSymbolInformation
-from solidlsp.lsp_protocol_handler.lsp_types import Definition, DefinitionParams, LocationLink
+from solidlsp.lsp_protocol_handler.lsp_types import (
+    Definition,
+    DefinitionParams,
+    LocationLink,
+)
 from solidlsp.lsp_protocol_handler.server import ProcessLaunchInfo
 from solidlsp.settings import SolidLSPSettings
 

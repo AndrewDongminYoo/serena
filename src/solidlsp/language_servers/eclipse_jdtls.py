@@ -16,11 +16,19 @@ from typing import cast
 from overrides import override
 
 from solidlsp import ls_types
-from solidlsp.ls import LanguageServerDependencyProvider, LSPFileBuffer, SolidLanguageServer
+from solidlsp.ls import (
+    LanguageServerDependencyProvider,
+    LSPFileBuffer,
+    SolidLanguageServer,
+)
 from solidlsp.ls_config import LanguageServerConfig
 from solidlsp.ls_types import UnifiedSymbolInformation
 from solidlsp.ls_utils import FileUtils, PlatformUtils
-from solidlsp.lsp_protocol_handler.lsp_types import DocumentSymbol, InitializeParams, SymbolInformation
+from solidlsp.lsp_protocol_handler.lsp_types import (
+    DocumentSymbol,
+    InitializeParams,
+    SymbolInformation,
+)
 from solidlsp.settings import SolidLSPSettings
 
 log = logging.getLogger(__name__)

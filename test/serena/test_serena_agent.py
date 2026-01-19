@@ -12,7 +12,13 @@ import pytest
 from serena.agent import SerenaAgent
 from serena.config.serena_config import ProjectConfig, RegisteredProject, SerenaConfig
 from serena.project import Project
-from serena.tools import SUCCESS_RESULT, FindReferencingSymbolsTool, FindSymbolTool, ReplaceContentTool, ReplaceSymbolBodyTool
+from serena.tools import (
+    SUCCESS_RESULT,
+    FindReferencingSymbolsTool,
+    FindSymbolTool,
+    ReplaceContentTool,
+    ReplaceSymbolBodyTool,
+)
 from solidlsp.ls_config import Language
 from solidlsp.ls_types import SymbolKind
 from test.conftest import get_repo_path, language_tests_enabled

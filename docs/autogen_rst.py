@@ -2,12 +2,13 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 
 log = logging.getLogger(os.path.basename(__file__))
 
 TOP_LEVEL_PACKAGE = "serena"
 PROJECT_NAME = "Serena"
+
 
 def module_template(module_qualname: str):
     module_name = module_qualname.split(".")[-1]
@@ -21,7 +22,7 @@ def module_template(module_qualname: str):
 """
 
 
-def index_template(package_name: str, doc_references: Optional[List[str]] = None, text_prefix=""):
+def index_template(package_name: str, doc_references: Optional[list[str]] = None, text_prefix=""):
     doc_references = doc_references or ""
     if doc_references:
         doc_references = "\n" + "\n".join(f"* :doc:`{ref}`" for ref in doc_references) + "\n"
@@ -75,11 +76,7 @@ def make_rst(src_root, rst_root, clean=False, overwrite=False, package_prefix=""
     files_in_dir = os.listdir(src_root)
     module_names = [f[:-3] for f in files_in_dir if f.endswith(".py") and not f.startswith("_")]
     subdir_refs = [
-        f"{f}/index"
-        for f in files_in_dir
-        if os.path.isdir(os.path.join(src_root, f))
-        and not f.startswith("_")
-        and not f.startswith(".")
+        f"{f}/index" for f in files_in_dir if os.path.isdir(os.path.join(src_root, f)) and not f.startswith("_") and not f.startswith(".")
     ]
     package_index_rst_path = os.path.join(
         rst_root,
@@ -109,14 +106,8 @@ def make_rst(src_root, rst_root, clean=False, overwrite=False, package_prefix=""
                 log.debug(f"Skipping {dirname}")
                 continue
             files_in_dir = os.listdir(os.path.join(root, dirname))
-            module_names = [
-                f[:-3] for f in files_in_dir if f.endswith(".py") and not f.startswith("_")
-            ]
-            subdir_refs = [
-                f"{f}/index"
-                for f in files_in_dir
-                if os.path.isdir(os.path.join(root, dirname, f)) and not f.startswith("_")
-            ]
+            module_names = [f[:-3] for f in files_in_dir if f.endswith(".py") and not f.startswith("_")]
+            subdir_refs = [f"{f}/index" for f in files_in_dir if os.path.isdir(os.path.join(root, dirname, f)) and not f.startswith("_")]
             package_qualname = f"{base_package_qualname}.{dirname}"
             package_index_rst_path = os.path.join(
                 rst_root,

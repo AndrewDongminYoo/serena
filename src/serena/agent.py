@@ -17,13 +17,25 @@ from interprompt.jinja_template import JinjaTemplate
 from serena import serena_version
 from serena.analytics import RegisteredTokenCountEstimator, ToolUsageStats
 from serena.config.context_mode import SerenaAgentContext, SerenaAgentMode
-from serena.config.serena_config import LanguageBackend, SerenaConfig, ToolInclusionDefinition
+from serena.config.serena_config import (
+    LanguageBackend,
+    SerenaConfig,
+    ToolInclusionDefinition,
+)
 from serena.dashboard import SerenaDashboardAPI
 from serena.ls_manager import LanguageServerManager
 from serena.project import Project
 from serena.prompt_factory import SerenaPromptFactory
 from serena.task_executor import TaskExecutor
-from serena.tools import ActivateProjectTool, GetCurrentConfigTool, OpenDashboardTool, ReplaceContentTool, Tool, ToolMarker, ToolRegistry
+from serena.tools import (
+    ActivateProjectTool,
+    GetCurrentConfigTool,
+    OpenDashboardTool,
+    ReplaceContentTool,
+    Tool,
+    ToolMarker,
+    ToolRegistry,
+)
 from serena.util.gui import system_has_usable_display
 from serena.util.inspection import iter_subclasses
 from serena.util.logging import MemoryLogHandler

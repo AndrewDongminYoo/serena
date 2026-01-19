@@ -9,7 +9,9 @@ def _test_erlang_ls_available() -> str:
 
     # Try to import and check Erlang availability
     try:
-        from solidlsp.language_servers.erlang_language_server import ErlangLanguageServer
+        from solidlsp.language_servers.erlang_language_server import (
+            ErlangLanguageServer,
+        )
 
         # Check if Erlang/OTP is installed
         erlang_version = ErlangLanguageServer._get_erlang_version()

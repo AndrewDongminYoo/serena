@@ -21,7 +21,11 @@ import pathlib
 import shutil
 import threading
 
-from solidlsp.language_servers.common import RuntimeDependency, RuntimeDependencyCollection, quote_windows_path
+from solidlsp.language_servers.common import (
+    RuntimeDependency,
+    RuntimeDependencyCollection,
+    quote_windows_path,
+)
 from solidlsp.ls import SolidLanguageServer
 from solidlsp.ls_config import LanguageServerConfig
 from solidlsp.lsp_protocol_handler.lsp_types import InitializeParams

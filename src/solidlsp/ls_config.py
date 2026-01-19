@@ -257,7 +257,9 @@ class Language(str, Enum):
 
                 return EclipseJDTLS
             case self.KOTLIN:
-                from solidlsp.language_servers.kotlin_language_server import KotlinLanguageServer
+                from solidlsp.language_servers.kotlin_language_server import (
+                    KotlinLanguageServer,
+                )
 
                 return KotlinLanguageServer
             case self.RUST:
@@ -265,7 +267,9 @@ class Language(str, Enum):
 
                 return RustAnalyzer
             case self.CSHARP:
-                from solidlsp.language_servers.csharp_language_server import CSharpLanguageServer
+                from solidlsp.language_servers.csharp_language_server import (
+                    CSharpLanguageServer,
+                )
 
                 return CSharpLanguageServer
             case self.CSHARP_OMNISHARP:
@@ -273,15 +277,21 @@ class Language(str, Enum):
 
                 return OmniSharp
             case self.TYPESCRIPT:
-                from solidlsp.language_servers.typescript_language_server import TypeScriptLanguageServer
+                from solidlsp.language_servers.typescript_language_server import (
+                    TypeScriptLanguageServer,
+                )
 
                 return TypeScriptLanguageServer
             case self.TYPESCRIPT_VTS:
-                from solidlsp.language_servers.vts_language_server import VtsLanguageServer
+                from solidlsp.language_servers.vts_language_server import (
+                    VtsLanguageServer,
+                )
 
                 return VtsLanguageServer
             case self.VUE:
-                from solidlsp.language_servers.vue_language_server import VueLanguageServer
+                from solidlsp.language_servers.vue_language_server import (
+                    VueLanguageServer,
+                )
 
                 return VueLanguageServer
             case self.GO:
@@ -297,11 +307,15 @@ class Language(str, Enum):
 
                 return Solargraph
             case self.DART:
-                from solidlsp.language_servers.dart_language_server import DartLanguageServer
+                from solidlsp.language_servers.dart_language_server import (
+                    DartLanguageServer,
+                )
 
                 return DartLanguageServer
             case self.CPP:
-                from solidlsp.language_servers.clangd_language_server import ClangdLanguageServer
+                from solidlsp.language_servers.clangd_language_server import (
+                    ClangdLanguageServer,
+                )
 
                 return ClangdLanguageServer
             case self.PHP:
@@ -309,7 +323,9 @@ class Language(str, Enum):
 
                 return Intelephense
             case self.PERL:
-                from solidlsp.language_servers.perl_language_server import PerlLanguageServer
+                from solidlsp.language_servers.perl_language_server import (
+                    PerlLanguageServer,
+                )
 
                 return PerlLanguageServer
             case self.CLOJURE:
@@ -317,11 +333,15 @@ class Language(str, Enum):
 
                 return ClojureLSP
             case self.ELIXIR:
-                from solidlsp.language_servers.elixir_tools.elixir_tools import ElixirTools
+                from solidlsp.language_servers.elixir_tools.elixir_tools import (
+                    ElixirTools,
+                )
 
                 return ElixirTools
             case self.ELM:
-                from solidlsp.language_servers.elm_language_server import ElmLanguageServer
+                from solidlsp.language_servers.elm_language_server import (
+                    ElmLanguageServer,
+                )
 
                 return ElmLanguageServer
             case self.TERRAFORM:
@@ -333,11 +353,15 @@ class Language(str, Enum):
 
                 return SourceKitLSP
             case self.BASH:
-                from solidlsp.language_servers.bash_language_server import BashLanguageServer
+                from solidlsp.language_servers.bash_language_server import (
+                    BashLanguageServer,
+                )
 
                 return BashLanguageServer
             case self.YAML:
-                from solidlsp.language_servers.yaml_language_server import YamlLanguageServer
+                from solidlsp.language_servers.yaml_language_server import (
+                    YamlLanguageServer,
+                )
 
                 return YamlLanguageServer
             case self.TOML:
@@ -349,7 +373,9 @@ class Language(str, Enum):
 
                 return ZigLanguageServer
             case self.NIX:
-                from solidlsp.language_servers.nixd_ls import NixLanguageServer  # type: ignore
+                from solidlsp.language_servers.nixd_ls import (
+                    NixLanguageServer,  # type: ignore
+                )
 
                 return NixLanguageServer
             case self.LUA:
@@ -357,11 +383,15 @@ class Language(str, Enum):
 
                 return LuaLanguageServer
             case self.ERLANG:
-                from solidlsp.language_servers.erlang_language_server import ErlangLanguageServer
+                from solidlsp.language_servers.erlang_language_server import (
+                    ErlangLanguageServer,
+                )
 
                 return ErlangLanguageServer
             case self.AL:
-                from solidlsp.language_servers.al_language_server import ALLanguageServer
+                from solidlsp.language_servers.al_language_server import (
+                    ALLanguageServer,
+                )
 
                 return ALLanguageServer
             case self.REGO:
@@ -377,7 +407,9 @@ class Language(str, Enum):
 
                 return RLanguageServer
             case self.SCALA:
-                from solidlsp.language_servers.scala_language_server import ScalaLanguageServer
+                from solidlsp.language_servers.scala_language_server import (
+                    ScalaLanguageServer,
+                )
 
                 return ScalaLanguageServer
             case self.JULIA:
@@ -385,19 +417,27 @@ class Language(str, Enum):
 
                 return JuliaLanguageServer
             case self.FORTRAN:
-                from solidlsp.language_servers.fortran_language_server import FortranLanguageServer
+                from solidlsp.language_servers.fortran_language_server import (
+                    FortranLanguageServer,
+                )
 
                 return FortranLanguageServer
             case self.HASKELL:
-                from solidlsp.language_servers.haskell_language_server import HaskellLanguageServer
+                from solidlsp.language_servers.haskell_language_server import (
+                    HaskellLanguageServer,
+                )
 
                 return HaskellLanguageServer
             case self.FSHARP:
-                from solidlsp.language_servers.fsharp_language_server import FSharpLanguageServer
+                from solidlsp.language_servers.fsharp_language_server import (
+                    FSharpLanguageServer,
+                )
 
                 return FSharpLanguageServer
             case self.POWERSHELL:
-                from solidlsp.language_servers.powershell_language_server import PowerShellLanguageServer
+                from solidlsp.language_servers.powershell_language_server import (
+                    PowerShellLanguageServer,
+                )
 
                 return PowerShellLanguageServer
             case self.PASCAL:
@@ -405,11 +445,15 @@ class Language(str, Enum):
 
                 return PascalLanguageServer
             case self.GROOVY:
-                from solidlsp.language_servers.groovy_language_server import GroovyLanguageServer
+                from solidlsp.language_servers.groovy_language_server import (
+                    GroovyLanguageServer,
+                )
 
                 return GroovyLanguageServer
             case self.MATLAB:
-                from solidlsp.language_servers.matlab_language_server import MatlabLanguageServer
+                from solidlsp.language_servers.matlab_language_server import (
+                    MatlabLanguageServer,
+                )
 
                 return MatlabLanguageServer
             case _:

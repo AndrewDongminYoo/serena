@@ -18,7 +18,12 @@ from tqdm import tqdm
 
 from serena.agent import SerenaAgent
 from serena.config.context_mode import SerenaAgentContext, SerenaAgentMode
-from serena.config.serena_config import LanguageBackend, ProjectConfig, SerenaConfig, SerenaPaths
+from serena.config.serena_config import (
+    LanguageBackend,
+    ProjectConfig,
+    SerenaConfig,
+    SerenaPaths,
+)
 from serena.constants import (
     DEFAULT_CONTEXT,
     DEFAULT_MODES,
@@ -29,7 +34,13 @@ from serena.constants import (
 )
 from serena.mcp import SerenaMCPFactory
 from serena.project import Project
-from serena.tools import FindReferencingSymbolsTool, FindSymbolTool, GetSymbolsOverviewTool, SearchForPatternTool, ToolRegistry
+from serena.tools import (
+    FindReferencingSymbolsTool,
+    FindSymbolTool,
+    GetSymbolsOverviewTool,
+    SearchForPatternTool,
+    ToolRegistry,
+)
 from serena.util.logging import MemoryLogHandler
 from solidlsp.ls_config import Language
 from solidlsp.util.subprocess_util import subprocess_kwargs

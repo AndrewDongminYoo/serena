@@ -2,7 +2,12 @@ import logging
 import os
 from typing import Any
 
-from .multilang_prompt import DEFAULT_LANG_CODE, LanguageFallbackMode, MultiLangPromptCollection, PromptList
+from .multilang_prompt import (
+    DEFAULT_LANG_CODE,
+    LanguageFallbackMode,
+    MultiLangPromptCollection,
+    PromptList,
+)
 
 log = logging.getLogger(__name__)
 

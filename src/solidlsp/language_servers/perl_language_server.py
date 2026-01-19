@@ -16,7 +16,10 @@ from overrides import override
 from solidlsp.ls import SolidLanguageServer
 from solidlsp.ls_config import LanguageServerConfig
 from solidlsp.ls_utils import PlatformId, PlatformUtils
-from solidlsp.lsp_protocol_handler.lsp_types import DidChangeConfigurationParams, InitializeParams
+from solidlsp.lsp_protocol_handler.lsp_types import (
+    DidChangeConfigurationParams,
+    InitializeParams,
+)
 from solidlsp.lsp_protocol_handler.server import ProcessLaunchInfo
 from solidlsp.settings import SolidLSPSettings
 
