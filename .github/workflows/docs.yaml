@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ !contains(fromJSON('["dependabot[bot]", "renovate[bot]", "snyk-bot", "allcontributors[bot]"]'), github.actor) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -52,6 +53,7 @@ jobs:
           path: docs/_build
 
   deploy:
+    if: ${{ !contains(fromJSON('["dependabot[bot]", "renovate[bot]", "snyk-bot", "allcontributors[bot]"]'), github.actor) }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

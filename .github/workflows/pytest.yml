@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   cpu:
+    if: ${{ !contains(fromJSON('["dependabot[bot]", "renovate[bot]", "snyk-bot", "allcontributors[bot]"]'), github.actor) }}
     name: Tests on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
