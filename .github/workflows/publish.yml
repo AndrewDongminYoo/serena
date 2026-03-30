@@ -18,6 +18,7 @@ env:
 
 jobs:
   publish:
+    if: ${{ !contains(fromJSON('["dependabot[bot]", "renovate[bot]", "snyk-bot", "allcontributors[bot]"]'), github.actor) }}
     name: Publish the serena-agent package
     runs-on: ubuntu-latest
 

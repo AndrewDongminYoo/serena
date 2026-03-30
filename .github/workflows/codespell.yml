@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   codespell:
+    if: ${{ !contains(fromJSON('["dependabot[bot]", "renovate[bot]", "snyk-bot", "allcontributors[bot]"]'), github.actor) }}
     name: Check for spelling errors
     runs-on: ubuntu-latest
     timeout-minutes: 2
