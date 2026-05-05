@@ -57,6 +57,17 @@
             final.setuptools
           ];
         });
+        proxy-tools = prev.proxy-tools.overrideAttrs (old: {
+          nativeBuildInputs = (old.nativeBuildInputs or []) ++ [
+            final.setuptools
+          ];
+        });
+        pywebview = prev.pywebview.overrideAttrs (old: {
+          nativeBuildInputs = (old.nativeBuildInputs or []) ++ [
+            final.setuptools
+            final.setuptools-scm
+          ];
+        });
       };
 
       python = pkgs.python311;
@@ -77,9 +88,19 @@
 
       packages = {
         serena-env = pythonSet.mkVirtualEnv "serena-env" workspace.deps.default;
-        serena = pkgs.runCommand "serena" {} ''
+        serena = pkgs.runCommand "serena" {
+            meta = {
+              description = "A powerful coding agent toolkit providing semantic retrieval and editing capabilities (MCP server & Agno integration)";
+              homepage = "https://oraios.github.io/serena";
+              changelog = "https://github.com/oraios/serena/blob/main/CHANGELOG.md";
+              mainProgram = "serena";
+              license = pkgs.lib.licenses.mit;
+              platforms = lib.platforms.all;
+            };
+          } ''
           mkdir -p $out/bin
           ln -s ${packages.serena-env}/bin/serena $out/bin/serena
+          ln -s ${packages.serena-env}/bin/serena-hooks $out/bin/serena-hooks
         '';
         default = packages.serena;
       };

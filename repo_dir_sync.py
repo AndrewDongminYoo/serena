@@ -53,7 +53,9 @@ def gitCommit(msg):
 
 def gitCommitWithMessageFromFile(commitMsgFilename):
     if not os.path.exists(commitMsgFilename):
-        raise FileNotFoundError(f"{commitMsgFilename} not found in {os.path.abspath(os.getcwd())}")
+        raise FileNotFoundError(
+            f"{commitMsgFilename} not found in {os.path.abspath(os.getcwd())}"
+        )
     os.system(f"git commit --file={commitMsgFilename}")
     os.unlink(commitMsgFilename)
 
@@ -70,35 +72,51 @@ class OtherRepo:
     def __init__(self, name, branch, pathToLib):
         self.pathToLibInThisRepo = os.path.abspath(pathToLib)
         if not os.path.exists(self.pathToLibInThisRepo):
-            raise ValueError(f"Repository directory '{self.pathToLibInThisRepo}' does not exist")
+            raise ValueError(
+                f"Repository directory '{self.pathToLibInThisRepo}' does not exist"
+            )
         self.name = name
         self.branch = branch
         self.libRepo: Optional[LibRepo] = None
 
     def isSyncEstablished(self):
-        return os.path.exists(os.path.join(self.pathToLibInThisRepo, self.SYNC_COMMIT_ID_FILE_LIB_REPO))
+        return os.path.exists(
+            os.path.join(self.pathToLibInThisRepo, self.SYNC_COMMIT_ID_FILE_LIB_REPO)
+        )
 
     def lastSyncIdThisRepo(self):
-        with open(os.path.join(self.pathToLibInThisRepo, self.SYNC_COMMIT_ID_FILE_THIS_REPO)) as f:
+        with open(
+            os.path.join(self.pathToLibInThisRepo, self.SYNC_COMMIT_ID_FILE_THIS_REPO),
+        ) as f:
             commitId = f.read().strip()
         return commitId
 
     def lastSyncIdLibRepo(self):
-        with open(os.path.join(self.pathToLibInThisRepo, self.SYNC_COMMIT_ID_FILE_LIB_REPO)) as f:
+        with open(
+            os.path.join(self.pathToLibInThisRepo, self.SYNC_COMMIT_ID_FILE_LIB_REPO),
+        ) as f:
             commitId = f.read().strip()
         return commitId
 
     def gitLogThisRepoSinceLastSync(self):
-        lg = gitLog(self.pathToLibInThisRepo, '--name-only HEAD "^%s" .' % self.lastSyncIdThisRepo())
+        lg = gitLog(
+            self.pathToLibInThisRepo,
+            '--name-only HEAD "^%s" .' % self.lastSyncIdThisRepo(),
+        )
         lg = re.sub(
-            r"commit [0-9a-z]{8,40}\n.*\n.*\n\s*\n.*\n\s*(\n.*\.syncCommitId\.(this|remote))+", r"", lg, flags=re.MULTILINE
+            r"commit [0-9a-z]{8,40}\n.*\n.*\n\s*\n.*\n\s*(\n.*\.syncCommitId\.(this|remote))+",
+            r"",
+            lg,
+            flags=re.MULTILINE,
         )  # remove commits with sync commit id update
         indent = "  "
         lg = indent + lg.replace("\n", "\n" + indent)
         return lg
 
     def gitLogLibRepoSinceLastSync(self, libRepo: "LibRepo"):
-        syncIdFile = os.path.join(self.pathToLibInThisRepo, self.SYNC_COMMIT_ID_FILE_LIB_REPO)
+        syncIdFile = os.path.join(
+            self.pathToLibInThisRepo, self.SYNC_COMMIT_ID_FILE_LIB_REPO
+        )
         if not os.path.exists(syncIdFile):
             return ""
         with open(syncIdFile) as f:
@@ -125,7 +143,9 @@ class OtherRepo:
 
         # check if the branch contains the commit that is referenced as the remote commit
         remoteCommitId = self.lastSyncIdLibRepo()
-        remoteCommitExists = execute("git rev-list HEAD..%s" % remoteCommitId, exceptionOnError=False)
+        remoteCommitExists = execute(
+            "git rev-list HEAD..%s" % remoteCommitId, exceptionOnError=False
+        )
         if not remoteCommitExists:
             if not self._userInputYesNo(
                 f"\nWARNING: The referenced remote commit {remoteCommitId} does not exist "
@@ -138,8 +158,12 @@ class OtherRepo:
         # check if this branch is clean
         lgLib = self.gitLogLibRepoSinceLastSync(libRepo).strip()
         if lgLib != "":
-            print(f"The following changes have been added to this branch in the library:\n\n{lgLib}\n\n")
-            print(f"ERROR: You must push these changes before you can pull or reset this branch to {remoteCommitId}")
+            print(
+                f"The following changes have been added to this branch in the library:\n\n{lgLib}\n\n"
+            )
+            print(
+                f"ERROR: You must push these changes before you can pull or reset this branch to {remoteCommitId}"
+            )
             sys.exit(1)
 
         # get log with relevant commits in this repo that are to be pulled
@@ -170,7 +194,10 @@ class OtherRepo:
 
         # copy tree from this repo to lib repo (but drop the sync commit id files)
         shutil.copytree(self.pathToLibInThisRepo, self.libRepo.libDirectory)
-        for fn in (self.SYNC_COMMIT_ID_FILE_LIB_REPO, self.SYNC_COMMIT_ID_FILE_THIS_REPO):
+        for fn in (
+            self.SYNC_COMMIT_ID_FILE_LIB_REPO,
+            self.SYNC_COMMIT_ID_FILE_THIS_REPO,
+        ):
             p = os.path.join(self.libRepo.libDirectory, fn)
             if os.path.exists(p):
                 os.unlink(p)
@@ -190,8 +217,13 @@ class OtherRepo:
             f.write(newSyncCommitIdLibRepo)
         with open(self.SYNC_COMMIT_ID_FILE_THIS_REPO, "w") as f:
             f.write(newSyncCommitIdThisRepo)
-        execute("git add %s %s" % (self.SYNC_COMMIT_ID_FILE_LIB_REPO, self.SYNC_COMMIT_ID_FILE_THIS_REPO))
-        execute(f'git commit -m "{self.SYNC_COMMIT_MESSAGE % self.libRepo.name} (pull)"')
+        execute(
+            "git add %s %s"
+            % (self.SYNC_COMMIT_ID_FILE_LIB_REPO, self.SYNC_COMMIT_ID_FILE_THIS_REPO)
+        )
+        execute(
+            f'git commit -m "{self.SYNC_COMMIT_MESSAGE % self.libRepo.name} (pull)"'
+        )
 
         print(
             f"\n\nIf everything was successful, you should now push your changes to branch "
@@ -259,11 +291,15 @@ class OtherRepo:
         with open(self.SYNC_COMMIT_ID_FILE_THIS_REPO, "w") as f:
             f.write(commitId)
         execute("git add %s" % self.SYNC_COMMIT_ID_FILE_THIS_REPO)
-        execute(f'git commit -m "{self.SYNC_COMMIT_MESSAGE % self.libRepo.name} (push)"')
+        execute(
+            f'git commit -m "{self.SYNC_COMMIT_MESSAGE % self.libRepo.name} (push)"'
+        )
 
         os.chdir(libRepo.rootPath)
 
-        print("\n\nIf everything was successful, you should now update the remote branch:\ngit push")
+        print(
+            "\n\nIf everything was successful, you should now update the remote branch:\ngit push"
+        )
 
     def prepare_restoration_of_ignored_files(self, base_dir: str):
         """
@@ -292,13 +328,19 @@ class OtherRepo:
         os.chdir(base_dir)
 
         # remove fully ignored directories that were overwritten by the sync
-        for d in self.libRepo.fullyIgnoredVersionedDirectories + self.libRepo.fullyIgnoredUnversionedDirectories:
+        for d in (
+            self.libRepo.fullyIgnoredVersionedDirectories
+            + self.libRepo.fullyIgnoredUnversionedDirectories
+        ):
             if os.path.exists(d):
                 print("Removing overwritten content: %s" % d)
                 shutil.rmtree(d)
 
         # restore directories and files that can be restored via git
-        for d in self.libRepo.ignoredDirectories + self.libRepo.fullyIgnoredVersionedDirectories:
+        for d in (
+            self.libRepo.ignoredDirectories
+            + self.libRepo.fullyIgnoredVersionedDirectories
+        ):
             restoration_cmd = "git checkout %s" % d
             print("Restoring: %s" % restoration_cmd)
             os.system(restoration_cmd)
@@ -348,8 +390,12 @@ class LibRepo:
         self.libDirectory = libDirectory
         self.libPath = os.path.join(self.rootPath, self.libDirectory)
         self.ignoredDirectories: list[str] = list(ignoredDirectories)
-        self.fullyIgnoredVersionedDirectories: list[str] = list(fullyIgnoredVersionedDirectories)
-        self.fullyIgnoredUnversionedDirectories: list[str] = list(fullyIgnoredUnversionedDirectories)
+        self.fullyIgnoredVersionedDirectories: list[str] = list(
+            fullyIgnoredVersionedDirectories
+        )
+        self.fullyIgnoredUnversionedDirectories: list[str] = list(
+            fullyIgnoredUnversionedDirectories
+        )
         self.ignoredFileGlobPatterns: list[str] = list(ignoredFileGlobPatterns)
         self.otherRepos: list[OtherRepo] = []
 
@@ -361,7 +407,9 @@ class LibRepo:
         repos = self.otherRepos
         args = sys.argv[1:]
         if len(args) != 2:
-            print(f"usage: sync.py <{'|'.join([repo.name for repo in repos])}> <push|pull>")
+            print(
+                f"usage: sync.py <{'|'.join([repo.name for repo in repos])}> <push|pull>"
+            )
         else:
             repo = [r for r in repos if r.name == args[0]]
             if len(repo) != 1:

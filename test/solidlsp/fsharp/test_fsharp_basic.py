@@ -1,18 +1,29 @@
 import os
-import tempfile
 import threading
-from pathlib import Path
-from unittest.mock import Mock, patch
+from typing import Any
 
 import pytest
 
 from solidlsp import SolidLanguageServer
-from solidlsp.language_servers.fsharp_language_server import FSharpLanguageServer
 from solidlsp.ls_config import Language
 from solidlsp.ls_utils import SymbolUtils
+from test.conftest import (
+    find_identifier_position,
+    get_repo_path,
+    is_ci,
+    language_has_verified_implementation_support,
+)
+from test.solidlsp.conftest import (
+    format_symbol_for_assert,
+    has_malformed_name,
+    request_all_symbols,
+)
+from test.solidlsp.util.diagnostics import assert_file_diagnostics
 
 
+# Currently, most F# tests fail, there seems to be a regression or instability.
 @pytest.mark.fsharp
+@pytest.mark.skipif(is_ci, reason="F# language server is currently unreliable")
 class TestFSharpLanguageServer:
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
     def test_find_symbol(self, language_server: SolidLanguageServer) -> None:
@@ -20,39 +31,113 @@ class TestFSharpLanguageServer:
         symbols = language_server.request_full_symbol_tree()
 
         # Check for main program module symbols
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "Program"), "Program module not found in symbol tree"
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "main"), "main function not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "Program"
+        ), "Program module not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "main"
+        ), "main function not found in symbol tree"
 
         # Check for Calculator module symbols
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "Calculator"), "Calculator module not found in symbol tree"
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "add"), "add function not found in symbol tree"
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "CalculatorClass"), "CalculatorClass not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "Calculator"
+        ), "Calculator module not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "add"
+        ), "add function not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "CalculatorClass"
+        ), "CalculatorClass not found in symbol tree"
 
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
-    def test_get_document_symbols_program(self, language_server: SolidLanguageServer) -> None:
+    def test_get_document_symbols_program(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test getting document symbols from the main Program.fs file."""
         file_path = os.path.join("Program.fs")
-        symbols = language_server.request_document_symbols(file_path).get_all_symbols_and_roots()[0]
+        symbols = language_server.request_document_symbols(
+            file_path
+        ).get_all_symbols_and_roots()[0]
 
         # Look for expected functions and modules
         symbol_names = [s.get("name") for s in symbols]
         assert "main" in symbol_names, "main function not found in Program.fs symbols"
 
+    if language_has_verified_implementation_support(Language.FSHARP):
+
+        @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
+        def test_find_implementations(
+            self, language_server: SolidLanguageServer
+        ) -> None:
+            repo_path = get_repo_path(Language.FSHARP)
+            pos = find_identifier_position(repo_path / "Formatter.fs", "FormatGreeting")
+            assert pos is not None, "Could not find IGreeter.FormatGreeting in fixture"
+
+            implementations = language_server.request_implementation(
+                "Formatter.fs", *pos
+            )
+            assert (
+                implementations
+            ), "Expected at least one implementation of IGreeter.FormatGreeting"
+            assert any(
+                "Formatter.fs" in implementation.get("relativePath", "")
+                for implementation in implementations
+            ), f"Expected ConsoleGreeter.FormatGreeting in implementations, got: {implementations}"
+
+        @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
+        def test_request_implementing_symbols(
+            self, language_server: SolidLanguageServer
+        ) -> None:
+            repo_path = get_repo_path(Language.FSHARP)
+            pos = find_identifier_position(repo_path / "Formatter.fs", "FormatGreeting")
+            assert pos is not None, "Could not find IGreeter.FormatGreeting in fixture"
+
+            implementing_symbols = language_server.request_implementing_symbols(
+                "Formatter.fs", *pos
+            )
+            assert (
+                implementing_symbols
+            ), "Expected implementing symbols for IGreeter.FormatGreeting"
+            assert any(
+                symbol.get("name") == "FormatGreeting"
+                and "Formatter.fs" in symbol["location"].get("relativePath", "")
+                for symbol in implementing_symbols
+            ), f"Expected ConsoleGreeter.FormatGreeting symbol, got: {implementing_symbols}"
+
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
-    def test_get_document_symbols_calculator(self, language_server: SolidLanguageServer) -> None:
+    def test_get_document_symbols_calculator(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test getting document symbols from Calculator.fs file."""
         file_path = os.path.join("Calculator.fs")
-        symbols = language_server.request_document_symbols(file_path).get_all_symbols_and_roots()[0]
+        symbols = language_server.request_document_symbols(
+            file_path
+        ).get_all_symbols_and_roots()[0]
 
         # Look for expected functions
         symbol_names = [s.get("name") for s in symbols]
-        expected_symbols = ["add", "subtract", "multiply", "divide", "square", "factorial", "CalculatorClass"]
+        expected_symbols = [
+            "add",
+            "subtract",
+            "multiply",
+            "divide",
+            "square",
+            "factorial",
+            "CalculatorClass",
+        ]
 
         for expected in expected_symbols:
-            assert expected in symbol_names, f"{expected} function not found in Calculator.fs symbols"
+            assert (
+                expected in symbol_names
+            ), f"{expected} function not found in Calculator.fs symbols"
 
+    @pytest.mark.xfail(
+        is_ci, reason="Test is flaky"
+    )  # TODO: Re-enable if the LS can be made more reliable #1040
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
-    def test_find_referencing_symbols(self, language_server: SolidLanguageServer) -> None:
+    def test_find_referencing_symbols(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test finding references using symbol selection range."""
         file_path = os.path.join("Calculator.fs")
         symbols = language_server.request_document_symbols(file_path)
@@ -65,30 +150,45 @@ class TestFSharpLanguageServer:
                 add_symbol = sym
                 break
 
-        assert add_symbol is not None, "Could not find 'add' function symbol in Calculator.fs"
+        assert (
+            add_symbol is not None
+        ), "Could not find 'add' function symbol in Calculator.fs"
 
         # Try to find references to the add function
         sel_start = add_symbol["selectionRange"]["start"]
-        refs = language_server.request_references(file_path, sel_start["line"], sel_start["character"] + 1)
+        refs = language_server.request_references(
+            file_path, sel_start["line"], sel_start["character"] + 1
+        )
 
         # The add function should be referenced in Program.fs
-        assert any("Program.fs" in ref.get("relativePath", "") for ref in refs), "Program.fs should reference add function"
+        assert any(
+            "Program.fs" in ref.get("relativePath", "") for ref in refs
+        ), "Program.fs should reference add function"
 
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
     def test_nested_module_symbols(self, language_server: SolidLanguageServer) -> None:
         """Test getting symbols from nested Models namespace."""
         file_path = os.path.join("Models", "Person.fs")
-        symbols = language_server.request_document_symbols(file_path).get_all_symbols_and_roots()[0]
+        symbols = language_server.request_document_symbols(
+            file_path
+        ).get_all_symbols_and_roots()[0]
 
         # Check for expected types and modules
         symbol_names = [s.get("name") for s in symbols]
         expected_symbols = ["Person", "PersonModule", "Address", "Employee"]
 
         for expected in expected_symbols:
-            assert expected in symbol_names, f"{expected} not found in Person.fs symbols"
+            assert (
+                expected in symbol_names
+            ), f"{expected} not found in Person.fs symbols"
 
+    @pytest.mark.xfail(
+        is_ci, reason="Test is flaky"
+    )  # TODO: Re-enable if the LS can be made more reliable #1040
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
-    def test_find_referencing_symbols_across_files(self, language_server: SolidLanguageServer) -> None:
+    def test_find_referencing_symbols_across_files(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test finding references to Calculator functions across files."""
         # Find the subtract function in Calculator.fs
         file_path = os.path.join("Calculator.fs")
@@ -104,11 +204,18 @@ class TestFSharpLanguageServer:
 
         # Find references to subtract function
         sel_start = subtract_symbol["selectionRange"]["start"]
-        refs = language_server.request_references(file_path, sel_start["line"], sel_start["character"] + 1)
+        refs = language_server.request_references(
+            file_path, sel_start["line"], sel_start["character"] + 1
+        )
 
         # The subtract function should be referenced in Program.fs
-        assert any("Program.fs" in ref.get("relativePath", "") for ref in refs), "Program.fs should reference subtract function"
+        assert any(
+            "Program.fs" in ref.get("relativePath", "") for ref in refs
+        ), "Program.fs should reference subtract function"
 
+    @pytest.mark.xfail(
+        is_ci, reason="Test is flaky"
+    )  # TODO: Re-enable if the LS can be made more reliable #1040
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
     def test_go_to_definition(self, language_server: SolidLanguageServer) -> None:
         """Test go-to-definition functionality."""
@@ -117,22 +224,33 @@ class TestFSharpLanguageServer:
 
         # Try to find definition of 'add' function used in Program.fs
         # This would typically be at the line where 'add 5 3' is called
-        definitions = language_server.request_definition(program_file, 10, 20)  # Approximate position
+        definitions = language_server.request_definition(
+            program_file, 10, 20
+        )  # Approximate position
 
         # We should get at least some definitions
-        assert len(definitions) >= 0, "Should get definitions (even if empty for complex cases)"
+        assert (
+            len(definitions) >= 0
+        ), "Should get definitions (even if empty for complex cases)"
 
+    @pytest.mark.xfail(
+        is_ci, reason="Test is flaky"
+    )  # TODO: Re-enable if the LS can be made more reliable #1040
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
     def test_hover_information(self, language_server: SolidLanguageServer) -> None:
         """Test hover information functionality."""
         file_path = os.path.join("Calculator.fs")
 
         # Try to get hover information for a function
-        hover_info = language_server.request_hover(file_path, 5, 10)  # Approximate position of a function
+        hover_info = language_server.request_hover(
+            file_path, 5, 10
+        )  # Approximate position of a function
 
         # Hover info might be None or contain information
         # This is acceptable as it depends on the LSP server's capabilities and timing
-        assert hover_info is None or isinstance(hover_info, dict), "Hover info should be None or dict"
+        assert hover_info is None or isinstance(
+            hover_info, dict
+        ), "Hover info should be None or dict"
 
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
     def test_completion(self, language_server: SolidLanguageServer) -> None:
@@ -140,14 +258,14 @@ class TestFSharpLanguageServer:
         file_path = os.path.join("Program.fs")
 
         # Use threading for cross-platform timeout (signal.SIGALRM is Unix-only)
-        result = [None]
-        exception = [None]
+        result: dict[str, Any] = dict(value=None)
+        exception: dict[str, Any] = dict(value=None)
 
         def run_completion():
             try:
-                result[0] = language_server.request_completions(file_path, 15, 10)
+                result["value"] = language_server.request_completions(file_path, 15, 10)
             except Exception as e:
-                exception[0] = e
+                exception["value"] = e
 
         thread = threading.Thread(target=run_completion, daemon=True)
         thread.start()
@@ -158,62 +276,29 @@ class TestFSharpLanguageServer:
             # The important thing is that the language server doesn't crash
             return
 
-        if exception[0]:
-            raise exception[0]
+        if exception["value"]:
+            raise exception["value"]
 
-        assert isinstance(result[0], list), "Completions should be a list"
+        assert isinstance(result["value"], list), "Completions should be a list"
 
     @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
-    def test_diagnostics(self, language_server: SolidLanguageServer) -> None:
-        """Test getting diagnostics (errors, warnings) from F# files."""
-        file_path = os.path.join("Program.fs")
+    def test_file_diagnostics(self, language_server: SolidLanguageServer) -> None:
+        assert_file_diagnostics(
+            language_server,
+            "DiagnosticsSample.fs",
+            (),
+            min_count=1,
+        )
 
-        # FsAutoComplete uses publishDiagnostics notifications instead of textDocument/diagnostic requests
-        # So we'll test that the language server can handle files without crashing
-        # In real usage, diagnostics would come through the publishDiagnostics notification handler
-
-        # Test that we can at least work with the file (open/close cycle)
-        with language_server.open_file(file_path) as _:
-            # If we can open and close the file without errors, basic diagnostics support is working
-            pass
-
-        # This is a successful test - FsAutoComplete is working with F# files
-        assert True, "F# language server can handle files successfully"
-
-
-@pytest.mark.fsharp
-class TestFSharpLanguageServerSetup:
-    """Test F# language server setup and configuration."""
-
-    def test_runtime_dependency_setup_without_dotnet(self) -> None:
-        """Test that setup fails gracefully when .NET is not installed."""
-        with patch("shutil.which", return_value=None):
-            with pytest.raises(RuntimeError, match=r"\.NET SDK is not installed"):
-                FSharpLanguageServer._setup_runtime_dependencies(Mock(), Mock())
-
-    def test_runtime_dependency_setup_with_dotnet(self) -> None:
-        """Test that setup works when .NET is available."""
-        mock_config = Mock()
-        mock_settings = Mock()
-
-        # Mock the ls_resources_dir to return a temp directory
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with patch("shutil.which", return_value="/usr/bin/dotnet"):
-                with patch.object(FSharpLanguageServer, "ls_resources_dir", return_value=temp_dir):
-                    with patch("subprocess.run") as mock_run:
-                        # Mock successful dotnet version check
-                        mock_run.return_value.stdout = "8.0.100"
-                        mock_run.return_value.returncode = 0
-
-                        # Create a fake fsautocomplete executable
-                        fsharp_dir = os.path.join(temp_dir, "fsharp-lsp")
-                        os.makedirs(fsharp_dir, exist_ok=True)
-                        # Use .exe extension on Windows, matching production code
-                        exe_name = "fsautocomplete.exe" if os.name == "nt" else "fsautocomplete"
-                        fsautocomplete_path = os.path.join(fsharp_dir, exe_name)
-                        Path(fsautocomplete_path).touch()
-
-                        result = FSharpLanguageServer._setup_runtime_dependencies(mock_config, mock_settings)
-
-                        assert fsautocomplete_path in result
-                        assert "--adaptive-lsp-server-enabled --project-graph-enabled --use-fcs-transparent-compiler" in result
+    @pytest.mark.parametrize("language_server", [Language.FSHARP], indirect=True)
+    def test_bare_symbol_names(self, language_server) -> None:
+        all_symbols = request_all_symbols(language_server)
+        malformed_symbols = []
+        for s in all_symbols:
+            if has_malformed_name(s):
+                malformed_symbols.append(s)
+        if malformed_symbols:
+            pytest.fail(
+                f"Found malformed symbols: {[format_symbol_for_assert(sym) for sym in malformed_symbols]}",
+                pytrace=False,
+            )

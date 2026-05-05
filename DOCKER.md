@@ -25,7 +25,7 @@ Simply mount your local directory to `/workspaces/serena/config` in the containe
 Initially, be sure to add a `serena_config.yml` file to the mounted directory which applies the following
 special settings for Docker usage:
 
-```dockerfile
+```
 # Disable the GUI log window since it's not supported in Docker
 gui_log_window: False
 # Listen on all interfaces for the web dashboard to be accessible from outside the container

@@ -3,15 +3,19 @@ This file contains various utility functions like I/O operations, handling paths
 """
 
 import gzip
+import hashlib
 import logging
 import os
 import platform
 import shutil
 import subprocess
+import tarfile
 import uuid
 import zipfile
 from enum import Enum
 from pathlib import Path, PurePath
+from typing import Literal, cast
+from urllib.parse import urlparse
 
 import charset_normalizer
 import requests
@@ -65,7 +69,9 @@ class TextUtils:
         return idx
 
     @staticmethod
-    def _get_updated_position_from_line_and_column_and_edit(l: int, c: int, text_to_be_inserted: str) -> tuple[int, int]:
+    def _get_updated_position_from_line_and_column_and_edit(
+        l: int, c: int, text_to_be_inserted: str
+    ) -> tuple[int, int]:
         """
         Utility function to get the position of the cursor after inserting text at a given line and column.
         """
@@ -78,7 +84,9 @@ class TextUtils:
         return (l, c)
 
     @staticmethod
-    def delete_text_between_positions(text: str, start_line: int, start_col: int, end_line: int, end_col: int) -> tuple[str, str]:
+    def delete_text_between_positions(
+        text: str, start_line: int, start_col: int, end_line: int, end_col: int
+    ) -> tuple[str, str]:
         """
         Deletes the text between the given start and end positions.
         Returns the modified text and the deleted text.
@@ -91,7 +99,9 @@ class TextUtils:
         return new_text, deleted_text
 
     @staticmethod
-    def insert_text_at_position(text: str, line: int, col: int, text_to_be_inserted: str) -> tuple[str, int, int]:
+    def insert_text_at_position(
+        text: str, line: int, col: int, text_to_be_inserted: str
+    ) -> tuple[str, int, int]:
         """
         Inserts the given text at the given line and column.
         Returns the modified text and the new line and column.
@@ -101,15 +111,38 @@ class TextUtils:
         except InvalidTextLocationError:
             num_lines_in_text = text.count("\n") + 1
             max_line = num_lines_in_text - 1
-            if line == max_line + 1 and col == 0:  # trying to insert at new line after full text
+            if (
+                line == max_line + 1 and col == 0
+            ):  # trying to insert at new line after full text
                 # insert at end, adding missing newline
                 change_index = len(text)
                 text_to_be_inserted = "\n" + text_to_be_inserted
             else:
                 raise
         new_text = text[:change_index] + text_to_be_inserted + text[change_index:]
-        new_l, new_c = TextUtils._get_updated_position_from_line_and_column_and_edit(line, col, text_to_be_inserted)
+        new_l, new_c = TextUtils._get_updated_position_from_line_and_column_and_edit(
+            line, col, text_to_be_inserted
+        )
         return new_text, new_l, new_c
+
+    @staticmethod
+    def get_text_in_range(
+        text: str, start_line: int, start_col: int, end_line: int, end_col: int
+    ) -> str:
+        """
+        Returns the text between the given start and end positions.
+        """
+        start_idx = TextUtils.get_index_from_line_col(text, start_line, start_col)
+        end_idx = TextUtils.get_index_from_line_col(text, end_line, end_col)
+        return text[start_idx:end_idx]
+
+    @staticmethod
+    def get_text_in_lines_range(text: str, start_line: int, end_line: int) -> str:
+        """
+        Returns the text encompassed by the given start and end lines (inclusive).
+        """
+        lines = text.splitlines(keepends=True)
+        return "".join(lines[start_line : end_line + 1])
 
 
 class PathUtils:
@@ -181,7 +214,9 @@ class FileUtils:
         """
         if not os.path.exists(file_path):
             log.error(f"Failed to read '{file_path}': File does not exist.")
-            raise FileNotFoundError(f"File read '{file_path}' failed: File does not exist.")
+            raise FileNotFoundError(
+                f"File read '{file_path}' failed: File does not exist."
+            )
         try:
             try:
                 with open(file_path, encoding=encoding) as inp_file:
@@ -204,68 +239,260 @@ class FileUtils:
         """
         Downloads the file from the given URL to the given {target_path}
         """
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        FileUtils.download_file_verified(url, target_path)
+
+    @staticmethod
+    def download_file_verified(
+        url: str,
+        target_path: str,
+        expected_sha256: str | None = None,
+        allowed_hosts: tuple[str, ...] | list[str] | None = None,
+    ) -> None:
+        """
+        Downloads a file from ``url`` to ``target_path`` with optional integrity and host validation.
+        """
+        # validating the requested host
+        FileUtils._validate_download_host(url, allowed_hosts)
+
+        # streaming the download into a temporary file
+        target_directory = os.path.dirname(target_path) or "."
+        os.makedirs(target_directory, exist_ok=True)
+        temp_file_path = str(
+            PurePath(
+                target_directory,
+                f".{Path(target_path).name}.{uuid.uuid4().hex}.download",
+            )
+        )
+        response: requests.Response | None = None
         try:
             response = requests.get(url, stream=True, timeout=60)
             if response.status_code != 200:
-                log.error(f"Error downloading file '{url}': {response.status_code} {response.text}")
+                log.error(
+                    f"Error downloading file '{url}': {response.status_code} {response.text}"
+                )
                 raise SolidLSPException("Error downloading file.")
-            with open(target_path, "wb") as f:
-                shutil.copyfileobj(response.raw, f)
+
+            FileUtils._validate_download_host(response.url, allowed_hosts)
+
+            with open(temp_file_path, "wb") as output_file:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        output_file.write(chunk)
+
+            FileUtils._verify_sha256_if_configured(temp_file_path, expected_sha256)
+
+            os.replace(temp_file_path, target_path)
         except Exception as exc:
             log.error(f"Error downloading file '{url}': {exc}")
             raise SolidLSPException("Error downloading file.") from None
+        finally:
+            if response is not None:
+                response.close()
+            if os.path.exists(temp_file_path):
+                Path.unlink(Path(temp_file_path))
 
     @staticmethod
-    def download_and_extract_archive(url: str, target_path: str, archive_type: str) -> None:
+    def download_and_extract_archive(
+        url: str, target_path: str, archive_type: str
+    ) -> None:
         """
         Downloads the archive from the given URL having format {archive_type} and extracts it to the given {target_path}
         """
+        FileUtils.download_and_extract_archive_verified(url, target_path, archive_type)
+
+    @staticmethod
+    def download_and_extract_archive_verified(
+        url: str,
+        target_path: str,
+        archive_type: str,
+        expected_sha256: str | None = None,
+        allowed_hosts: tuple[str, ...] | list[str] | None = None,
+    ) -> None:
+        """
+        Downloads an archive from ``url`` and extracts it safely into ``target_path``.
+        """
         try:
-            tmp_files = []
-            tmp_file_name = str(PurePath(os.path.expanduser("~"), "solidlsp_tmp", uuid.uuid4().hex))
-            tmp_files.append(tmp_file_name)
+            # preparing the temporary download location
+            tmp_files: list[str] = []
+            tmp_file_name = str(
+                PurePath(os.path.expanduser("~"), "solidlsp_tmp", uuid.uuid4().hex)
+            )
             os.makedirs(os.path.dirname(tmp_file_name), exist_ok=True)
-            FileUtils.download_file(url, tmp_file_name)
+
+            # downloading the archive with optional verification
+            FileUtils.download_file_verified(
+                url,
+                tmp_file_name,
+                expected_sha256=expected_sha256,
+                allowed_hosts=allowed_hosts,
+            )
+            tmp_files.append(tmp_file_name)
+
+            # extracting the archive according to its format
             if archive_type in ["tar", "gztar", "bztar", "xztar"]:
                 os.makedirs(target_path, exist_ok=True)
-                shutil.unpack_archive(tmp_file_name, target_path, archive_type)
+                FileUtils._extract_tar_archive(tmp_file_name, target_path, archive_type)
             elif archive_type == "zip":
                 os.makedirs(target_path, exist_ok=True)
-                with zipfile.ZipFile(tmp_file_name, "r") as zip_ref:
-                    for zip_info in zip_ref.infolist():
-                        extracted_path = zip_ref.extract(zip_info, target_path)
-                        ZIP_SYSTEM_UNIX = 3  # zip file created on Unix system
-                        if zip_info.create_system != ZIP_SYSTEM_UNIX:
-                            continue
-                        # extractall() does not preserve permissions
-                        # see. https://github.com/python/cpython/issues/59999
-                        attrs = (zip_info.external_attr >> 16) & 0o777
-                        if attrs:
-                            os.chmod(extracted_path, attrs)
+                FileUtils._extract_zip_archive(tmp_file_name, target_path)
             elif archive_type == "zip.gz":
                 os.makedirs(target_path, exist_ok=True)
                 tmp_file_name_ungzipped = tmp_file_name + ".zip"
                 tmp_files.append(tmp_file_name_ungzipped)
-                with gzip.open(tmp_file_name, "rb") as f_in, open(tmp_file_name_ungzipped, "wb") as f_out:
+                with gzip.open(tmp_file_name, "rb") as f_in, open(
+                    tmp_file_name_ungzipped, "wb"
+                ) as f_out:
                     shutil.copyfileobj(f_in, f_out)
-                shutil.unpack_archive(tmp_file_name_ungzipped, target_path, "zip")
+                FileUtils._extract_zip_archive(tmp_file_name_ungzipped, target_path)
             elif archive_type == "gz":
-                with gzip.open(tmp_file_name, "rb") as f_in, open(target_path, "wb") as f_out:
+                target_directory = os.path.dirname(target_path) or "."
+                os.makedirs(target_directory, exist_ok=True)
+                temp_output_path = str(
+                    PurePath(
+                        target_directory,
+                        f".{Path(target_path).name}.{uuid.uuid4().hex}.extract",
+                    )
+                )
+                tmp_files.append(temp_output_path)
+                with gzip.open(tmp_file_name, "rb") as f_in, open(
+                    temp_output_path, "wb"
+                ) as f_out:
                     shutil.copyfileobj(f_in, f_out)
+                os.replace(temp_output_path, target_path)
             elif archive_type == "binary":
-                # For single binary files, just move to target without extraction
+                target_directory = os.path.dirname(target_path) or "."
+                os.makedirs(target_directory, exist_ok=True)
                 shutil.move(tmp_file_name, target_path)
+                tmp_files.remove(tmp_file_name)
             else:
                 log.error(f"Unknown archive type '{archive_type}' for extraction")
                 raise SolidLSPException(f"Unknown archive type '{archive_type}'")
         except Exception as exc:
-            log.error(f"Error extracting archive '{tmp_file_name}' obtained from '{url}': {exc}")
+            log.error(
+                f"Error extracting archive '{tmp_file_name}' obtained from '{url}': {exc}"
+            )
             raise SolidLSPException("Error extracting archive.") from exc
         finally:
             for tmp_file_name in tmp_files:
                 if os.path.exists(tmp_file_name):
                     Path.unlink(Path(tmp_file_name))
+
+    @staticmethod
+    def calculate_sha256(file_path: str) -> str:
+        """
+        Calculates the SHA256 checksum of a file.
+        """
+        sha256_hash = hashlib.sha256()
+        with open(file_path, "rb") as input_file:
+            for chunk in iter(lambda: input_file.read(8192), b""):
+                sha256_hash.update(chunk)
+        return sha256_hash.hexdigest()
+
+    @staticmethod
+    def _verify_sha256_if_configured(
+        file_path: str, expected_sha256: str | None
+    ) -> None:
+        """
+        Verifies the SHA256 checksum of a file when an expected value is provided.
+        """
+        if expected_sha256 is None:
+            return
+
+        actual_sha256 = FileUtils.calculate_sha256(file_path)
+        if actual_sha256.lower() != expected_sha256.lower():
+            raise SolidLSPException(
+                f"Checksum verification failed for '{file_path}': expected {expected_sha256}, got {actual_sha256}"
+            )
+
+    @staticmethod
+    def _validate_download_host(
+        url: str, allowed_hosts: tuple[str, ...] | list[str] | None
+    ) -> None:
+        """
+        Validates that a download URL resolves to one of the configured hosts.
+        """
+        if not allowed_hosts:
+            return
+
+        hostname = urlparse(url).hostname
+        normalized_allowed_hosts = {host.lower() for host in allowed_hosts}
+        if hostname is None or hostname.lower() not in normalized_allowed_hosts:
+            raise SolidLSPException(
+                f"Refusing to download from host '{hostname or '<unknown>'}'; allowed hosts: {sorted(normalized_allowed_hosts)}"
+            )
+
+    @staticmethod
+    def _validate_extraction_path(member_name: str, target_path: str) -> str:
+        """
+        Validates that an archive member stays within the extraction root and returns its destination path.
+        """
+        normalized_parts = Path(member_name).parts
+        if any(part == ".." for part in normalized_parts):
+            raise SolidLSPException(
+                f"Unsafe archive member '{member_name}': path traversal is not allowed"
+            )
+
+        absolute_target_path = os.path.abspath(target_path)
+        absolute_member_path = os.path.abspath(os.path.join(target_path, member_name))
+        if not (
+            absolute_member_path.startswith(absolute_target_path + os.sep)
+            or absolute_member_path == absolute_target_path
+        ):
+            raise SolidLSPException(
+                f"Unsafe archive member '{member_name}': path escapes extraction directory"
+            )
+
+        return absolute_member_path
+
+    @staticmethod
+    def _extract_zip_archive(archive_path: str, target_path: str) -> None:
+        """
+        Extracts a ZIP archive safely while preserving Unix permissions when available.
+        """
+        with zipfile.ZipFile(archive_path, "r") as zip_ref:
+            for zip_info in zip_ref.infolist():
+                extracted_path = FileUtils._validate_extraction_path(
+                    zip_info.filename, target_path
+                )
+
+                if zip_info.is_dir():
+                    os.makedirs(extracted_path, exist_ok=True)
+                    continue
+
+                os.makedirs(os.path.dirname(extracted_path), exist_ok=True)
+                with zip_ref.open(zip_info, "r") as source_file, open(
+                    extracted_path, "wb"
+                ) as output_file:
+                    shutil.copyfileobj(source_file, output_file)
+
+                ZIP_SYSTEM_UNIX = 3
+                if zip_info.create_system == ZIP_SYSTEM_UNIX:
+                    attrs = (zip_info.external_attr >> 16) & 0o777
+                    if attrs:
+                        os.chmod(extracted_path, attrs)
+
+    @staticmethod
+    def _extract_tar_archive(
+        archive_path: str, target_path: str, archive_type: str
+    ) -> None:
+        """
+        Extracts a tar archive safely into the target directory.
+        """
+        archive_mode_by_type = {
+            "tar": "r:",
+            "gztar": "r:gz",
+            "bztar": "r:bz2",
+            "xztar": "r:xz",
+        }
+        tar_mode = cast(
+            Literal["r:", "r:gz", "r:bz2", "r:xz"], archive_mode_by_type[archive_type]
+        )
+
+        with tarfile.open(archive_path, tar_mode) as tar_ref:
+            for tar_member in tar_ref.getmembers():
+                FileUtils._validate_extraction_path(tar_member.name, target_path)
+
+            tar_ref.extractall(target_path)
 
 
 class PlatformId(str, Enum):
@@ -328,7 +555,9 @@ class PlatformUtils:
                     platform_id = f"{system_map[system]}-{libc}-{machine_map[machine]}"
             return PlatformId(platform_id)
         else:
-            raise SolidLSPException(f"Unknown platform: {system=}, {machine=}, {bitness=}")
+            raise SolidLSPException(
+                f"Unknown platform: {system=}, {machine=}, {bitness=}"
+            )
 
     @staticmethod
     def _determine_windows_machine_type() -> str:
@@ -338,7 +567,10 @@ class PlatformUtils:
         class SYSTEM_INFO(ctypes.Structure):
             class _U(ctypes.Union):
                 class _S(ctypes.Structure):
-                    _fields_ = [("wProcessorArchitecture", wintypes.WORD), ("wReserved", wintypes.WORD)]
+                    _fields_ = [
+                        ("wProcessorArchitecture", wintypes.WORD),
+                        ("wReserved", wintypes.WORD),
+                    ]
 
                 _fields_ = [("dwOemId", wintypes.DWORD), ("s", _S)]
                 _anonymous_ = ("s",)
@@ -368,7 +600,10 @@ class PlatformUtils:
             0: "i386",
         }
 
-        return arch_map.get(sys_info.wProcessorArchitecture, f"Unknown ({sys_info.wProcessorArchitecture})")
+        return arch_map.get(
+            sys_info.wProcessorArchitecture,
+            f"Unknown ({sys_info.wProcessorArchitecture})",
+        )
 
     @staticmethod
     def get_dotnet_version() -> DotnetVersion:
@@ -376,7 +611,9 @@ class PlatformUtils:
         Returns the dotnet version for the current system
         """
         try:
-            result = subprocess.run(["dotnet", "--list-runtimes"], capture_output=True, check=True)
+            result = subprocess.run(
+                ["dotnet", "--list-runtimes"], capture_output=True, check=True
+            )
             available_version_cmd_output = []
             for line in result.stdout.decode("utf-8").split("\n"):
                 if line.startswith("Microsoft.NETCore.App"):
@@ -401,11 +638,13 @@ class PlatformUtils:
 
             # If no supported version found, raise exception with all available versions
             raise SolidLSPException(
-                f"No supported dotnet version found. Available versions: {', '.join(available_version_cmd_output)}. Supported versions: 4, 6, 7, 8"
+                f"No supported dotnet version found. Available versions: {', '.join(available_version_cmd_output)}. Supported versions: 4, 6, 7, 8, 9"
             )
         except (FileNotFoundError, subprocess.CalledProcessError):
             try:
-                result = subprocess.run(["mono", "--version"], capture_output=True, check=True)
+                result = subprocess.run(
+                    ["mono", "--version"], capture_output=True, check=True
+                )
                 return DotnetVersion.VMONO
             except (FileNotFoundError, subprocess.CalledProcessError):
                 raise SolidLSPException("dotnet or mono not found on the system")
@@ -413,7 +652,12 @@ class PlatformUtils:
 
 class SymbolUtils:
     @staticmethod
-    def symbol_tree_contains_name(roots: list[UnifiedSymbolInformation], name: str) -> bool:
+    def symbol_tree_contains_name(
+        roots: list[UnifiedSymbolInformation], name: str
+    ) -> bool:
+        """
+        Check if any symbol in the tree has a name matching the given name.
+        """
         for symbol in roots:
             if symbol["name"] == name:
                 return True

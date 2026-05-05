@@ -36,7 +36,9 @@ class TiktokenCountEstimator(TokenCountEstimator):
         """
         import tiktoken
 
-        log.info(f"Loading tiktoken encoding for model {model_name}, this may take a while on the first run.")
+        log.info(
+            f"Loading tiktoken encoding for model {model_name}, this may take a while on the first run."
+        )
         self._encoding = tiktoken.encoding_for_model(model_name)
 
     def estimate_token_count(self, text: str) -> int:
@@ -51,7 +53,9 @@ class AnthropicTokenCount(TokenCountEstimator):
     See https://docs.anthropic.com/en/docs/build-with-claude/token-counting
     """
 
-    def __init__(self, model_name: str = "claude-sonnet-4-20250514", api_key: str | None = None):
+    def __init__(
+        self, model_name: str = "claude-sonnet-4-20250514", api_key: str | None = None
+    ):
         import anthropic
 
         self._model_name = model_name
@@ -82,7 +86,9 @@ class CharCountEstimator(TokenCountEstimator):
         return len(text) // self._avg_chars_per_token
 
 
-_registered_token_estimator_instances_cache: dict[RegisteredTokenCountEstimator, TokenCountEstimator] = {}
+_registered_token_estimator_instances_cache: dict[
+    RegisteredTokenCountEstimator, TokenCountEstimator
+] = {}
 
 
 class RegisteredTokenCountEstimator(Enum):
@@ -121,10 +127,15 @@ class ToolUsageStats:
     A class to record and manage tool usage statistics.
     """
 
-    def __init__(self, token_count_estimator: RegisteredTokenCountEstimator = RegisteredTokenCountEstimator.TIKTOKEN_GPT4O):
+    def __init__(
+        self,
+        token_count_estimator: RegisteredTokenCountEstimator = RegisteredTokenCountEstimator.TIKTOKEN_GPT4O,
+    ):
         self._token_count_estimator = token_count_estimator.load_estimator()
         self._token_estimator_name = token_count_estimator.value
-        self._tool_stats: dict[str, ToolUsageStats.Entry] = defaultdict(ToolUsageStats.Entry)
+        self._tool_stats: dict[str, ToolUsageStats.Entry] = defaultdict(
+            ToolUsageStats.Entry
+        )
         self._tool_stats_lock = threading.Lock()
 
     @property
@@ -158,7 +169,9 @@ class ToolUsageStats:
         with self._tool_stats_lock:
             return copy(self._tool_stats[tool_name])
 
-    def record_tool_usage(self, tool_name: str, input_str: str, output_str: str) -> None:
+    def record_tool_usage(
+        self, tool_name: str, input_str: str, output_str: str
+    ) -> None:
         input_tokens = self._estimate_token_count(input_str)
         output_tokens = self._estimate_token_count(output_str)
         with self._tool_stats_lock:

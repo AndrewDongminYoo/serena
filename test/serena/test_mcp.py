@@ -59,7 +59,9 @@ def test_make_tool_basic() -> None:
     # Test that the MCP tool has the correct properties
     assert isinstance(mcp_tool, MCPTool)
     assert mcp_tool.name == "basic"
-    assert "This is a test function. Returns A greeting message." in mcp_tool.description
+    assert (
+        "This is a test function. Returns A greeting message." in mcp_tool.description
+    )
 
     # Test that the parameters were correctly processed
     parameters = mcp_tool.parameters
@@ -99,7 +101,10 @@ def test_make_tool_no_params() -> None:
     mcp_tool = make_tool(tool)
 
     assert mcp_tool.name == "no_params"
-    assert "This is a test function with no parameters. Returns A simple result." in mcp_tool.description
+    assert (
+        "This is a test function with no parameters. Returns A simple result."
+        in mcp_tool.description
+    )
     assert mcp_tool.parameters["properties"] == {}
 
 
@@ -144,7 +149,9 @@ def test_make_tool_parameter_not_in_docstring() -> None:
 
     assert "name" in mcp_tool.parameters["properties"]
     assert "missing_param" in mcp_tool.parameters["properties"]
-    assert mcp_tool.parameters["properties"]["name"]["description"] == "The person's name."
+    assert (
+        mcp_tool.parameters["properties"]["name"]["description"] == "The person's name."
+    )
     assert "description" not in mcp_tool.parameters["properties"]["missing_param"]
 
 
@@ -173,9 +180,18 @@ def test_make_tool_multiline_docstring() -> None:
 
     assert "Create an MCP server" in mcp_tool.description
     assert "Returns A configured FastMCP server instance" in mcp_tool.description
-    assert mcp_tool.parameters["properties"]["project_file_path"]["description"] == "The path to the project file, or None."
-    assert mcp_tool.parameters["properties"]["host"]["description"] == "The host to bind to."
-    assert mcp_tool.parameters["properties"]["port"]["description"] == "The port to bind to."
+    assert (
+        mcp_tool.parameters["properties"]["project_file_path"]["description"]
+        == "The path to the project file, or None."
+    )
+    assert (
+        mcp_tool.parameters["properties"]["host"]["description"]
+        == "The host to bind to."
+    )
+    assert (
+        mcp_tool.parameters["properties"]["port"]["description"]
+        == "The port to bind to."
+    )
 
 
 def test_make_tool_capitalization_and_periods() -> None:
@@ -197,9 +213,18 @@ def test_make_tool_capitalization_and_periods() -> None:
     tool = FormatTool()
     mcp_tool = make_tool(tool)
 
-    assert mcp_tool.parameters["properties"]["param1"]["description"] == "Lowercase description."
-    assert mcp_tool.parameters["properties"]["param2"]["description"] == "Description with period."
-    assert mcp_tool.parameters["properties"]["param3"]["description"] == "Description with Capitalized word."
+    assert (
+        mcp_tool.parameters["properties"]["param1"]["description"]
+        == "Lowercase description."
+    )
+    assert (
+        mcp_tool.parameters["properties"]["param2"]["description"]
+        == "Description with period."
+    )
+    assert (
+        mcp_tool.parameters["properties"]["param3"]["description"]
+        == "Description with Capitalized word."
+    )
 
 
 def test_make_tool_missing_apply() -> None:

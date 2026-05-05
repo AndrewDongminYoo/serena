@@ -20,7 +20,9 @@ from test_repo.models import Item, User
 from test_repo.services import ItemService, UserService
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -28,9 +30,16 @@ def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Test Repo Application")
 
-    parser.add_argument("--config", type=str, default="config.json", help="Path to configuration file")
+    parser.add_argument(
+        "--config", type=str, default="config.json", help="Path to configuration file"
+    )
 
-    parser.add_argument("--mode", choices=["user", "item", "both"], default="both", help="Operation mode")
+    parser.add_argument(
+        "--mode",
+        choices=["user", "item", "both"],
+        default="both",
+        help="Operation mode",
+    )
 
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
 
@@ -59,12 +68,16 @@ def create_sample_users(service: UserService, count: int = 3) -> list[User]:
     users = []
 
     # Create admin user
-    admin = service.create_user(name="Admin User", email="admin@example.com", roles=["admin"])
+    admin = service.create_user(
+        name="Admin User", email="admin@example.com", roles=["admin"]
+    )
     users.append(admin)
 
     # Create regular users
     for i in range(count - 1):
-        user = service.create_user(name=f"User {i + 1}", email=f"user{i + 1}@example.com", roles=["user"])
+        user = service.create_user(
+            name=f"User {i + 1}", email=f"user{i + 1}@example.com", roles=["user"]
+        )
         users.append(user)
 
     return users
@@ -77,7 +90,9 @@ def create_sample_items(service: ItemService, count: int = 5) -> list[Item]:
 
     for i in range(count):
         category = categories[i % len(categories)]
-        item = service.create_item(name=f"Item {i + 1}", price=10.0 * (i + 1), category=category)
+        item = service.create_item(
+            name=f"Item {i + 1}", price=10.0 * (i + 1), category=category
+        )
         items.append(item)
 
     return items

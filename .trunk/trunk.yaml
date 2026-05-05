@@ -9,7 +9,7 @@ runtimes:
     - go@1.21.0
     - java@13.0.11
     - node@22.16.0
-    - python@3.10.8
+    - python@3.14.4
     - rust@1.82.0
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
@@ -20,24 +20,25 @@ lint:
     - isort
     - dart
   enabled:
-    - mypy@1.19.1
-    - ruff@0.14.13
+    - grype@0.110.0
+    - mypy@1.20.2
+    - ruff@0.15.12
     - golangci-lint2@2.6.1
     - actionlint@1.7.10
-    - black@26.1.0
-    - checkov@3.2.497
+    - black@26.3.1
+    - checkov@3.2.526
     - clippy@1.65.0
-    - codespell@2.4.1
+    - codespell@2.4.2
     - git-diff-check
     - gofmt@1.20.4
     - gokart@0.5.1
     - golangci-lint@2.8.0
     - hadolint@2.14.0
     - ktlint@1.8.0
-    - markdownlint@0.47.0
+    - markdownlint@0.48.0
     - osv-scanner@2.3.2
     - oxipng@10.0.0
-    - prettier@3.8.0
+    - prettier@3.8.3
     - rustfmt@1.65.0
     - shellcheck@0.11.0
     - shfmt@3.6.0
@@ -45,13 +46,13 @@ lint:
     - terrascan@1.19.9
     - tflint@0.60.0
     - tfsec@1.28.14
-    - trivy@0.68.2
+    - trivy@0.69.2
     - trufflehog@3.92.5
     - yamllint@1.38.0
 plugins:
   sources:
     - id: trunk
-      ref: v1.7.4
+      ref: v1.8.0
       uri: https://github.com/trunk-io/plugins
 actions:
   disabled:

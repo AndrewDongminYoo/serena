@@ -1,6 +1,11 @@
 """
 Ruby LSP Language Server implementation using Shopify's ruby-lsp.
 Provides modern Ruby language server capabilities with improved performance.
+
+You can pass the following entries in ``ls_specific_settings["ruby"]``:
+    - ruby_lsp_version: Override the pinned ruby-lsp gem version installed by
+      Serena when no project-local or global ruby-lsp is already available
+      (default: the bundled Serena version).
 """
 
 import json
@@ -14,28 +19,42 @@ import threading
 from overrides import override
 
 from solidlsp.ls import SolidLanguageServer
-from solidlsp.ls_config import LanguageServerConfig
+from solidlsp.ls_config import Language, LanguageServerConfig
 from solidlsp.lsp_protocol_handler.lsp_types import InitializeParams, InitializeResult
 from solidlsp.lsp_protocol_handler.server import ProcessLaunchInfo
 from solidlsp.settings import SolidLSPSettings
 
 log = logging.getLogger(__name__)
 
+RUBY_LSP_VERSION = "0.26.8"
+
 
 class RubyLsp(SolidLanguageServer):
     """
     Provides Ruby specific instantiation of the LanguageServer class using ruby-lsp.
     Contains various configurations and settings specific to Ruby with modern LSP features.
+    Supports overriding the bundled gem version via ``ruby_lsp_version``.
     """
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         """
         Creates a RubyLsp instance. This class is not meant to be instantiated directly.
         Use LanguageServer.create() instead.
         """
-        ruby_lsp_executable = self._setup_runtime_dependencies(config, repository_root_path)
+        ruby_lsp_executable = self._setup_runtime_dependencies(
+            config, repository_root_path, solidlsp_settings
+        )
         super().__init__(
-            config, repository_root_path, ProcessLaunchInfo(cmd=ruby_lsp_executable, cwd=repository_root_path), "ruby", solidlsp_settings
+            config,
+            repository_root_path,
+            ProcessLaunchInfo(cmd=ruby_lsp_executable, cwd=repository_root_path),
+            "ruby",
+            solidlsp_settings,
         )
         self.analysis_complete = threading.Event()
         self.service_ready_event = threading.Event()
@@ -59,6 +78,7 @@ class RubyLsp(SolidLanguageServer):
             "public/packs",  # Webpacker output
             "public/webpack",  # Webpack output
             "public/assets",  # Rails compiled assets
+            ".ruby-lsp",
         ]
         return super().is_ignored_dirname(dirname) or dirname in ruby_ignored_dirs
 
@@ -92,48 +112,105 @@ class RubyLsp(SolidLanguageServer):
             return shutil.which(executable_name)
 
     @staticmethod
-    def _setup_runtime_dependencies(config: LanguageServerConfig, repository_root_path: str) -> list[str]:
+    def _setup_runtime_dependencies(
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ) -> list[str]:
         """
         Setup runtime dependencies for ruby-lsp and return the command list to start the server.
-        Installation strategy: Bundler project > global ruby-lsp > gem install ruby-lsp
+        Installation strategy: Bundler project > global ruby-lsp > gem install ruby-lsp at the pinned version
         """
-        # Detect rbenv-managed Ruby environment
-        # When .ruby-version exists, it indicates the project uses rbenv for version management.
-        # rbenv automatically reads .ruby-version to determine which Ruby version to use.
-        # Using "rbenv exec" ensures commands run with the correct Ruby version and its gems.
+        ls_specific_settings = solidlsp_settings.get_ls_specific_settings(Language.RUBY)
+        ruby_lsp_version = ls_specific_settings.get(
+            "ruby_lsp_version", RUBY_LSP_VERSION
+        )
+        # Detect Ruby version manager environment
+        # Using the version manager's exec wrapper ensures commands run with the correct Ruby version
+        # and its gems.
         #
-        # Why rbenv is preferred over system Ruby:
-        # - Respects project-specific Ruby versions
-        # - Avoids bundler version mismatches between system and project
-        # - Ensures consistent environment across developers
-        #
-        # Fallback behavior:
-        # If .ruby-version doesn't exist or rbenv isn't installed, we fall back to system Ruby.
-        # This may cause issues if:
-        # - System Ruby version differs from what the project expects
-        # - System bundler version is incompatible with Gemfile.lock
-        # - Project gems aren't installed in system Ruby
+        # Priority order:
+        # 1. rbenv  - .ruby-version + rbenv binary; uses "rbenv exec <cmd>"
+        # 2. mise   - .ruby-version + mise binary; uses "mise exec ruby -- <cmd>" (scoped to ruby
+        #             tool only, avoids activating unrelated tools in .tool-versions)
+        # 3. asdf   - .tool-versions + asdf binary; uses "asdf exec <cmd>"
+        # 4. RVM    - .ruby-version + rvm-exec binary; uses "rvm-exec ruby-X.Y.Z <cmd>"
+        #             rvm-exec requires the version string as first arg (e.g. "ruby-3.2.0");
+        #             may live at ~/.rvm/bin/rvm-exec if not on PATH
+        # 5. system Ruby - fallback, may cause version/gem mismatches
         ruby_version_file = os.path.join(repository_root_path, ".ruby-version")
-        use_rbenv = os.path.exists(ruby_version_file) and shutil.which("rbenv") is not None
+        tool_versions_file = os.path.join(repository_root_path, ".tool-versions")
+        rvm_exec_path = shutil.which("rvm-exec") or os.path.join(
+            os.path.expanduser("~"), ".rvm", "bin", "rvm-exec"
+        )
+
+        use_rbenv = (
+            os.path.exists(ruby_version_file) and shutil.which("rbenv") is not None
+        )
+        use_mise = (
+            os.path.exists(ruby_version_file)
+            and not use_rbenv
+            and shutil.which("mise") is not None
+        )
+        use_asdf = (
+            os.path.exists(tool_versions_file)
+            and not use_rbenv
+            and not use_mise
+            and shutil.which("asdf") is not None
+        )
+        use_rvm = (
+            os.path.exists(ruby_version_file)
+            and not use_rbenv
+            and not use_mise
+            and not use_asdf
+            and os.path.exists(rvm_exec_path)
+        )
 
         if use_rbenv:
             ruby_cmd = ["rbenv", "exec", "ruby"]
             bundle_cmd = ["rbenv", "exec", "bundle"]
             log.info(f"Using rbenv-managed Ruby (found {ruby_version_file})")
+        elif use_mise:
+            ruby_cmd = ["mise", "exec", "ruby", "--", "ruby"]
+            bundle_cmd = ["mise", "exec", "ruby", "--", "bundle"]
+            log.info(f"Using mise-managed Ruby (found {ruby_version_file})")
+        elif use_asdf:
+            ruby_cmd = ["asdf", "exec", "ruby"]
+            bundle_cmd = ["asdf", "exec", "bundle"]
+            log.info(f"Using asdf-managed Ruby (found {tool_versions_file})")
+        elif use_rvm:
+            with open(ruby_version_file) as _f:
+                raw_version = _f.read().strip()
+            rvm_ruby_version = (
+                raw_version
+                if raw_version.startswith("ruby-")
+                else f"ruby-{raw_version}"
+            )
+            ruby_cmd = [rvm_exec_path, rvm_ruby_version, "ruby"]
+            bundle_cmd = [rvm_exec_path, rvm_ruby_version, "bundle"]
+            log.info(
+                f"Using RVM-managed Ruby (found {ruby_version_file}, version={rvm_ruby_version})"
+            )
         else:
             ruby_cmd = ["ruby"]
             bundle_cmd = ["bundle"]
-            if os.path.exists(ruby_version_file):
+            if os.path.exists(ruby_version_file) or os.path.exists(tool_versions_file):
                 log.warning(
-                    f"Found {ruby_version_file} but rbenv is not installed. "
-                    "Using system Ruby. Consider installing rbenv for better version management: https://github.com/rbenv/rbenv",
+                    "Found Ruby version file but no supported version manager (rbenv, mise, asdf, rvm) detected. "
+                    "Using system Ruby. Consider installing mise: https://mise.jdx.dev",
                 )
             else:
-                log.info("No .ruby-version file found, using system Ruby")
+                log.info("No Ruby version file found, using system Ruby")
 
         # Check if Ruby is installed
         try:
-            result = subprocess.run(ruby_cmd + ["--version"], check=True, capture_output=True, cwd=repository_root_path, text=True)
+            result = subprocess.run(
+                ruby_cmd + ["--version"],
+                check=True,
+                capture_output=True,
+                cwd=repository_root_path,
+                text=True,
+            )
             ruby_version = result.stdout.strip()
             log.info(f"Ruby version: {ruby_version}")
 
@@ -144,19 +221,26 @@ class RubyLsp(SolidLanguageServer):
             if version_match:
                 major, minor, patch = map(int, version_match.groups())
                 if major < 2 or (major == 2 and minor < 6):
-                    log.warning(f"Warning: Ruby {major}.{minor}.{patch} detected. ruby-lsp works best with Ruby 2.6+")
+                    log.warning(
+                        f"Warning: Ruby {major}.{minor}.{patch} detected. ruby-lsp works best with Ruby 2.6+"
+                    )
 
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr if isinstance(e.stderr, str) else e.stderr.decode() if e.stderr else "Unknown error"
+            error_msg = (
+                e.stderr
+                if isinstance(e.stderr, str)
+                else e.stderr.decode() if e.stderr else "Unknown error"
+            )
             raise RuntimeError(
                 f"Error checking Ruby installation: {error_msg}. Please ensure Ruby is properly installed and in PATH."
             ) from e
         except FileNotFoundError as e:
             raise RuntimeError(
                 "Ruby is not installed or not found in PATH. Please install Ruby using one of these methods:\n"
+                "  - Using mise:  mise install ruby && mise use ruby  (https://mise.jdx.dev)\n"
                 "  - Using rbenv: rbenv install 3.0.0 && rbenv global 3.0.0\n"
-                "  - Using RVM: rvm install 3.0.0 && rvm use 3.0.0 --default\n"
-                "  - Using asdf: asdf install ruby 3.0.0 && asdf global ruby 3.0.0\n"
+                "  - Using asdf:  asdf install ruby 3.0.0 && asdf global ruby 3.0.0\n"
+                "  - Using RVM:   rvm install 3.0.0 && rvm use 3.0.0 --default\n"
                 "  - System package manager (brew install ruby, apt install ruby, etc.)"
             ) from e
 
@@ -169,17 +253,27 @@ class RubyLsp(SolidLanguageServer):
             log.info("Detected Bundler project (Gemfile found)")
 
             # Check if bundle command is available using Windows-compatible search
-            bundle_path = RubyLsp._find_executable_with_extensions(bundle_cmd[0] if len(bundle_cmd) == 1 else "bundle")
+            bundle_path = RubyLsp._find_executable_with_extensions(
+                bundle_cmd[0] if len(bundle_cmd) == 1 else "bundle"
+            )
             if not bundle_path:
                 # Try common bundle executables
                 for bundle_executable in ["bin/bundle", "bundle"]:
                     bundle_full_path: str | None
                     if bundle_executable.startswith("bin/"):
-                        bundle_full_path = os.path.join(repository_root_path, bundle_executable)
+                        bundle_full_path = os.path.join(
+                            repository_root_path, bundle_executable
+                        )
                     else:
-                        bundle_full_path = RubyLsp._find_executable_with_extensions(bundle_executable)
+                        bundle_full_path = RubyLsp._find_executable_with_extensions(
+                            bundle_executable
+                        )
                     if bundle_full_path and os.path.exists(bundle_full_path):
-                        bundle_path = bundle_full_path if bundle_executable.startswith("bin/") else bundle_executable
+                        bundle_path = (
+                            bundle_full_path
+                            if bundle_executable.startswith("bin/")
+                            else bundle_executable
+                        )
                         break
 
             if not bundle_path:
@@ -215,20 +309,31 @@ class RubyLsp(SolidLanguageServer):
         # Try to install ruby-lsp globally
         log.info("ruby-lsp not found, attempting to install globally...")
         try:
-            subprocess.run(["gem", "install", "ruby-lsp"], check=True, capture_output=True, cwd=repository_root_path)
+            subprocess.run(
+                ["gem", "install", "ruby-lsp", "-v", ruby_lsp_version],
+                check=True,
+                capture_output=True,
+                cwd=repository_root_path,
+            )
             log.info("Successfully installed ruby-lsp globally")
             # Find the newly installed ruby-lsp executable
             ruby_lsp_path = RubyLsp._find_executable_with_extensions("ruby-lsp")
             return [ruby_lsp_path] if ruby_lsp_path else ["ruby-lsp"]
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr if isinstance(e.stderr, str) else e.stderr.decode() if e.stderr else str(e)
+            error_msg = (
+                e.stderr
+                if isinstance(e.stderr, str)
+                else e.stderr.decode() if e.stderr else str(e)
+            )
             if is_bundler_project:
                 raise RuntimeError(
                     f"Failed to install ruby-lsp globally: {error_msg}\n"
                     "For Bundler projects, please add 'gem \"ruby-lsp\"' to your Gemfile and run 'bundle install'.\n"
-                    "Alternatively, install globally: gem install ruby-lsp"
+                    f"Alternatively, install globally: gem install ruby-lsp -v {ruby_lsp_version}"
                 ) from e
-            raise RuntimeError(f"Failed to install ruby-lsp: {error_msg}\nPlease try installing manually: gem install ruby-lsp") from e
+            raise RuntimeError(
+                f"Failed to install ruby-lsp: {error_msg}\nPlease try installing manually: gem install ruby-lsp -v {ruby_lsp_version}"
+            ) from e
 
     @staticmethod
     def _detect_rails_project(repository_root_path: str) -> bool:
@@ -350,7 +455,6 @@ class RubyLsp(SolidLanguageServer):
             if params.get("type") == "ready":
                 log.info("ruby-lsp service is ready.")
                 self.analysis_complete.set()
-                self.completions_available.set()
 
         def execute_client_command_handler(params: dict) -> list:
             return []
@@ -370,7 +474,6 @@ class RubyLsp(SolidLanguageServer):
                 if value.get("kind") == "end":
                     log.info("ruby-lsp indexing complete ($/progress end)")
                     self.analysis_complete.set()
-                    self.completions_available.set()
                 elif value.get("kind") == "begin":
                     log.info("ruby-lsp indexing started ($/progress begin)")
                 elif "percentage" in value:
@@ -384,7 +487,6 @@ class RubyLsp(SolidLanguageServer):
                     if value.get("kind") == "end" or value.get("percentage") == 100:
                         log.info("ruby-lsp indexing complete (token progress)")
                         self.analysis_complete.set()
-                        self.completions_available.set()
 
         def window_work_done_progress_create(params: dict) -> dict:
             """Handle workDoneProgress/create requests from ruby-lsp"""
@@ -394,16 +496,22 @@ class RubyLsp(SolidLanguageServer):
         self.server.on_request("client/registerCapability", register_capability_handler)
         self.server.on_notification("language/status", lang_status_handler)
         self.server.on_notification("window/logMessage", window_log_message)
-        self.server.on_request("workspace/executeClientCommand", execute_client_command_handler)
+        self.server.on_request(
+            "workspace/executeClientCommand", execute_client_command_handler
+        )
         self.server.on_notification("$/progress", progress_handler)
-        self.server.on_request("window/workDoneProgress/create", window_work_done_progress_create)
+        self.server.on_request(
+            "window/workDoneProgress/create", window_work_done_progress_create
+        )
         self.server.on_notification("textDocument/publishDiagnostics", do_nothing)
 
         log.info("Starting ruby-lsp server process")
         self.server.start()
         initialize_params = self._get_initialize_params()
 
-        log.info("Sending initialize request from LSP client to LSP server and awaiting response")
+        log.info(
+            "Sending initialize request from LSP client to LSP server and awaiting response"
+        )
         log.info(f"Sending init params: {json.dumps(initialize_params, indent=4)}")
         init_response = self.server.send.initialize(initialize_params)
         log.info(f"Received init response: {init_response}")
@@ -412,10 +520,15 @@ class RubyLsp(SolidLanguageServer):
         # Note: ruby-lsp may return textDocumentSync in different formats (number or object)
         text_document_sync = init_response["capabilities"].get("textDocumentSync")
         if isinstance(text_document_sync, int):
-            assert text_document_sync in [1, 2], f"Unexpected textDocumentSync value: {text_document_sync}"
+            assert text_document_sync in [
+                1,
+                2,
+            ], f"Unexpected textDocumentSync value: {text_document_sync}"
         elif isinstance(text_document_sync, dict):
             # ruby-lsp returns an object with change property
-            assert "change" in text_document_sync, "textDocumentSync object should have 'change' property"
+            assert (
+                "change" in text_document_sync
+            ), "textDocumentSync object should have 'change' property"
 
         assert "completionProvider" in init_response["capabilities"]
 
@@ -426,10 +539,11 @@ class RubyLsp(SolidLanguageServer):
         if self.analysis_complete.wait(timeout=30.0):
             log.info("ruby-lsp initial indexing complete, server ready")
         else:
-            log.warning("Timeout waiting for ruby-lsp indexing completion, proceeding anyway")
+            log.warning(
+                "Timeout waiting for ruby-lsp indexing completion, proceeding anyway"
+            )
             # Fallback: assume indexing is complete after timeout
             self.analysis_complete.set()
-            self.completions_available.set()
 
     def _handle_initialization_response(self, init_response: InitializeResult) -> None:
         """
@@ -441,10 +555,15 @@ class RubyLsp(SolidLanguageServer):
             # Validate textDocumentSync (ruby-lsp may return different formats)
             text_document_sync = capabilities.get("textDocumentSync")
             if isinstance(text_document_sync, int):
-                assert text_document_sync in [1, 2], f"Unexpected textDocumentSync value: {text_document_sync}"
+                assert text_document_sync in [
+                    1,
+                    2,
+                ], f"Unexpected textDocumentSync value: {text_document_sync}"
             elif isinstance(text_document_sync, dict):
                 # ruby-lsp returns an object with change property
-                assert "change" in text_document_sync, "textDocumentSync object should have 'change' property"
+                assert (
+                    "change" in text_document_sync
+                ), "textDocumentSync object should have 'change' property"
 
             # Log important capabilities
             important_capabilities = [

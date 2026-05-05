@@ -27,11 +27,9 @@ function backup_file() {
 		echo "Error: File '${file}' does not exist" >&2
 		return 1
 	fi
-	local datetime
-	datetime="$(date +%Y%m%d_%H%M%S)"
 
 	mkdir -p "${backup_dir}"
-	cp "${file}" "${backup_dir}/$(basename "${file}").${datetime}.bak"
+	cp "${file}" "${backup_dir}/$(basename "${file}").$(date +%Y%m%d_%H%M%S).bak"
 	echo "Backup created for ${file}"
 }
 
@@ -53,8 +51,7 @@ function contains_element() {
 function log_message() {
 	local level="$1"
 	local message="$2"
-	local timestamp
-	timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+	local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
 	case "${level}" in
 	"ERROR")

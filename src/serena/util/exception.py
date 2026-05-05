@@ -27,7 +27,11 @@ def is_headless_environment() -> bool:
         return True
 
     # Check for common CI/container environments
-    if os.environ.get("CI") or os.environ.get("CONTAINER") or os.path.exists("/.dockerenv"):
+    if (
+        os.environ.get("CI")
+        or os.environ.get("CONTAINER")
+        or os.path.exists("/.dockerenv")
+    ):
         return True
 
     # Check for WSL (only on Unix-like systems where os.uname exists)

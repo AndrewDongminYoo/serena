@@ -2,14 +2,15 @@ import logging
 import os
 import pathlib
 import subprocess
-import threading
 import time
+from collections.abc import Hashable
 
 from overrides import override
 
 from solidlsp import ls_types
-from solidlsp.ls import SolidLanguageServer
+from solidlsp.ls import RawDocumentSymbol, SolidLanguageServer
 from solidlsp.ls_config import LanguageServerConfig
+from solidlsp.ls_types import SymbolKind
 from solidlsp.lsp_protocol_handler.lsp_types import InitializeParams
 from solidlsp.lsp_protocol_handler.server import ProcessLaunchInfo
 from solidlsp.settings import SolidLSPSettings
@@ -29,13 +30,21 @@ class SourceKitLSP(SolidLanguageServer):
         # - .swiftpm: Swift Package Manager metadata
         # - node_modules: if the project has JavaScript components
         # - dist/build: common output directories
-        return super().is_ignored_dirname(dirname) or dirname in [".build", ".swiftpm", "node_modules", "dist", "build"]
+        return super().is_ignored_dirname(dirname) or dirname in [
+            ".build",
+            ".swiftpm",
+            "node_modules",
+            "dist",
+            "build",
+        ]
 
     @staticmethod
     def _get_sourcekit_lsp_version() -> str:
         """Get the installed sourcekit-lsp version or raise error if sourcekit was not found."""
         try:
-            result = subprocess.run(["sourcekit-lsp", "-h"], capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                ["sourcekit-lsp", "-h"], capture_output=True, text=True, check=False
+            )
             if result.returncode == 0:
                 return result.stdout.strip()
             else:
@@ -46,17 +55,48 @@ class SourceKitLSP(SolidLanguageServer):
                 "And make sure it is available on your PATH."
             ) from e
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         sourcekit_version = self._get_sourcekit_lsp_version()
         log.info(f"Starting sourcekit lsp with version: {sourcekit_version}")
 
         super().__init__(
-            config, repository_root_path, ProcessLaunchInfo(cmd="sourcekit-lsp", cwd=repository_root_path), "swift", solidlsp_settings
+            config,
+            repository_root_path,
+            ProcessLaunchInfo(cmd="sourcekit-lsp", cwd=repository_root_path),
+            "swift",
+            solidlsp_settings,
         )
-        self.server_ready = threading.Event()
         self.request_id = 0
         self._did_sleep_before_requesting_references = False
         self._initialization_timestamp: float | None = None
+
+    @override
+    def _document_symbols_cache_fingerprint(self) -> Hashable:
+        normalize_symbol_name_version = 1
+        return normalize_symbol_name_version
+
+    @override
+    def _normalize_symbol_name(
+        self, symbol: RawDocumentSymbol, relative_file_path: str
+    ) -> str:
+        original_name = symbol["name"]
+
+        if symbol.get("kind") not in (
+            SymbolKind.Function,
+            SymbolKind.Method,
+            SymbolKind.Constructor,
+        ):
+            return original_name
+
+        if "(" not in original_name:
+            return original_name
+
+        return original_name.split("(", 1)[0].strip()
 
     @staticmethod
     def _get_initialize_params(repository_absolute_path: str) -> InitializeParams:
@@ -80,7 +120,12 @@ class SourceKitLSP(SolidLanguageServer):
                         ],
                     },
                 },
-                "notebookDocument": {"synchronization": {"dynamicRegistration": True, "executionSummarySupport": True}},
+                "notebookDocument": {
+                    "synchronization": {
+                        "dynamicRegistration": True,
+                        "executionSummarySupport": True,
+                    }
+                },
                 "textDocument": {
                     "callHierarchy": {"dynamicRegistration": True},
                     "codeAction": {
@@ -116,45 +161,134 @@ class SourceKitLSP(SolidLanguageServer):
                             "insertTextModeSupport": {"valueSet": [1, 2]},
                             "labelDetailsSupport": True,
                             "preselectSupport": True,
-                            "resolveSupport": {"properties": ["documentation", "detail", "additionalTextEdits"]},
+                            "resolveSupport": {
+                                "properties": [
+                                    "documentation",
+                                    "detail",
+                                    "additionalTextEdits",
+                                ]
+                            },
                             "snippetSupport": True,
                             "tagSupport": {"valueSet": [1]},
                         },
                         "completionItemKind": {
-                            "valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+                            "valueSet": [
+                                1,
+                                2,
+                                3,
+                                4,
+                                5,
+                                6,
+                                7,
+                                8,
+                                9,
+                                10,
+                                11,
+                                12,
+                                13,
+                                14,
+                                15,
+                                16,
+                                17,
+                                18,
+                                19,
+                                20,
+                                21,
+                                22,
+                                23,
+                                24,
+                                25,
+                            ]
                         },
-                        "completionList": {"itemDefaults": ["commitCharacters", "editRange", "insertTextFormat", "insertTextMode", "data"]},
+                        "completionList": {
+                            "itemDefaults": [
+                                "commitCharacters",
+                                "editRange",
+                                "insertTextFormat",
+                                "insertTextMode",
+                                "data",
+                            ]
+                        },
                         "contextSupport": True,
                         "dynamicRegistration": True,
                         "insertTextMode": 2,
                     },
                     "declaration": {"dynamicRegistration": True, "linkSupport": True},
                     "definition": {"dynamicRegistration": True, "linkSupport": True},
-                    "diagnostic": {"dynamicRegistration": True, "relatedDocumentSupport": False},
+                    "diagnostic": {
+                        "dynamicRegistration": True,
+                        "relatedDocumentSupport": False,
+                    },
                     "documentHighlight": {"dynamicRegistration": True},
-                    "documentLink": {"dynamicRegistration": True, "tooltipSupport": True},
+                    "documentLink": {
+                        "dynamicRegistration": True,
+                        "tooltipSupport": True,
+                    },
                     "documentSymbol": {
                         "dynamicRegistration": True,
                         "hierarchicalDocumentSymbolSupport": True,
                         "labelSupport": True,
                         "symbolKind": {
-                            "valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
+                            "valueSet": [
+                                1,
+                                2,
+                                3,
+                                4,
+                                5,
+                                6,
+                                7,
+                                8,
+                                9,
+                                10,
+                                11,
+                                12,
+                                13,
+                                14,
+                                15,
+                                16,
+                                17,
+                                18,
+                                19,
+                                20,
+                                21,
+                                22,
+                                23,
+                                24,
+                                25,
+                                26,
+                            ]
                         },
                         "tagSupport": {"valueSet": [1]},
                     },
                     "foldingRange": {
                         "dynamicRegistration": True,
                         "foldingRange": {"collapsedText": False},
-                        "foldingRangeKind": {"valueSet": ["comment", "imports", "region"]},
+                        "foldingRangeKind": {
+                            "valueSet": ["comment", "imports", "region"]
+                        },
                         "lineFoldingOnly": True,
                         "rangeLimit": 5000,
                     },
                     "formatting": {"dynamicRegistration": True},
-                    "hover": {"contentFormat": ["markdown", "plaintext"], "dynamicRegistration": True},
-                    "implementation": {"dynamicRegistration": True, "linkSupport": True},
+                    "hover": {
+                        "contentFormat": ["markdown", "plaintext"],
+                        "dynamicRegistration": True,
+                    },
+                    "implementation": {
+                        "dynamicRegistration": True,
+                        "linkSupport": True,
+                    },
                     "inlayHint": {
                         "dynamicRegistration": True,
-                        "resolveSupport": {"properties": ["tooltip", "textEdits", "label.tooltip", "label.location", "label.command"]},
+                        "resolveSupport": {
+                            "properties": [
+                                "tooltip",
+                                "textEdits",
+                                "label.tooltip",
+                                "label.location",
+                                "label.command",
+                            ]
+                        },
                     },
                     "inlineValue": {"dynamicRegistration": True},
                     "linkedEditingRange": {"dynamicRegistration": True},
@@ -166,7 +300,10 @@ class SourceKitLSP(SolidLanguageServer):
                         "tagSupport": {"valueSet": [1, 2]},
                         "versionSupport": False,
                     },
-                    "rangeFormatting": {"dynamicRegistration": True, "rangesSupport": True},
+                    "rangeFormatting": {
+                        "dynamicRegistration": True,
+                        "rangesSupport": True,
+                    },
                     "references": {"dynamicRegistration": True},
                     "rename": {
                         "dynamicRegistration": True,
@@ -230,13 +367,23 @@ class SourceKitLSP(SolidLanguageServer):
                             "parameterInformation": {"labelOffsetSupport": True},
                         },
                     },
-                    "synchronization": {"didSave": True, "dynamicRegistration": True, "willSave": True, "willSaveWaitUntil": True},
-                    "typeDefinition": {"dynamicRegistration": True, "linkSupport": True},
+                    "synchronization": {
+                        "didSave": True,
+                        "dynamicRegistration": True,
+                        "willSave": True,
+                        "willSaveWaitUntil": True,
+                    },
+                    "typeDefinition": {
+                        "dynamicRegistration": True,
+                        "linkSupport": True,
+                    },
                     "typeHierarchy": {"dynamicRegistration": True},
                 },
                 "window": {
                     "showDocument": {"support": True},
-                    "showMessage": {"messageActionItem": {"additionalPropertiesSupport": True}},
+                    "showMessage": {
+                        "messageActionItem": {"additionalPropertiesSupport": True}
+                    },
                     "workDoneProgress": True,
                 },
                 "workspace": {
@@ -245,7 +392,10 @@ class SourceKitLSP(SolidLanguageServer):
                     "configuration": True,
                     "diagnostics": {"refreshSupport": True},
                     "didChangeConfiguration": {"dynamicRegistration": True},
-                    "didChangeWatchedFiles": {"dynamicRegistration": True, "relativePatternSupport": True},
+                    "didChangeWatchedFiles": {
+                        "dynamicRegistration": True,
+                        "relativePatternSupport": True,
+                    },
                     "executeCommand": {"dynamicRegistration": True},
                     "fileOperations": {
                         "didCreate": True,
@@ -264,7 +414,34 @@ class SourceKitLSP(SolidLanguageServer):
                         "dynamicRegistration": True,
                         "resolveSupport": {"properties": ["location.range"]},
                         "symbolKind": {
-                            "valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
+                            "valueSet": [
+                                1,
+                                2,
+                                3,
+                                4,
+                                5,
+                                6,
+                                7,
+                                8,
+                                9,
+                                10,
+                                11,
+                                12,
+                                13,
+                                14,
+                                15,
+                                16,
+                                17,
+                                18,
+                                19,
+                                20,
+                                21,
+                                22,
+                                23,
+                                24,
+                                25,
+                                26,
+                            ]
                         },
                         "tagSupport": {"valueSet": [1]},
                     },
@@ -282,7 +459,12 @@ class SourceKitLSP(SolidLanguageServer):
             "initializationOptions": {
                 "backgroundIndexing": True,
                 "backgroundPreparationMode": "enabled",
-                "textDocument/codeLens": {"supportedCommands": {"swift.debug": "swift.debug", "swift.run": "swift.run"}},
+                "textDocument/codeLens": {
+                    "supportedCommands": {
+                        "swift.debug": "swift.debug",
+                        "swift.run": "swift.run",
+                    }
+                },
                 "window/didChangeActiveDocument": True,
                 "workspace/getReferenceDocument": True,
                 "workspace/peekDocuments": True,
@@ -322,26 +504,28 @@ class SourceKitLSP(SolidLanguageServer):
         self.server.start()
         initialize_params = self._get_initialize_params(self.repository_root_path)
 
-        log.info("Sending initialize request from LSP client to LSP server and awaiting response")
+        log.info(
+            "Sending initialize request from LSP client to LSP server and awaiting response"
+        )
         init_response = self.server.send.initialize(initialize_params)
 
         capabilities = init_response["capabilities"]
         log.info(f"SourceKit LSP capabilities: {list(capabilities.keys())}")
 
         assert "textDocumentSync" in capabilities, "textDocumentSync capability missing"
-        assert "definitionProvider" in capabilities, "definitionProvider capability missing"
+        assert (
+            "definitionProvider" in capabilities
+        ), "definitionProvider capability missing"
 
         self.server.notify.initialized({})
-        self.completions_available.set()
-
-        self.server_ready.set()
-        self.server_ready.wait()
 
         # Mark initialization timestamp for smarter delay calculation
         self._initialization_timestamp = time.time()
 
     @override
-    def request_references(self, relative_file_path: str, line: int, column: int) -> list[ls_types.Location]:
+    def request_references(
+        self, relative_file_path: str, line: int, column: int
+    ) -> list[ls_types.Location]:
         # SourceKit LSP needs initialization + indexing time after startup
         # before it can provide accurate reference information. This sleep
         # prevents race conditions where references might not be available yet.
@@ -357,7 +541,9 @@ class SourceKitLSP(SolidLanguageServer):
                 # Fallback if initialization timestamp is missing
                 remaining_delay = 15 if os.getenv("CI") else 5
 
-            log.info(f"Sleeping {remaining_delay:.1f}s before requesting references for the first time (CI needs extra indexing time)")
+            log.info(
+                f"Sleeping {remaining_delay:.1f}s before requesting references for the first time (CI needs extra indexing time)"
+            )
             time.sleep(remaining_delay)
             self._did_sleep_before_requesting_references = True
 

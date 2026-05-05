@@ -10,31 +10,49 @@ Uses genericptr/pascal-language-server which returns SymbolInformation[] format:
 - Method names don't include parent class prefix; uses containerName instead
 """
 
+import shutil
+
 import pytest
 
 from solidlsp import SolidLanguageServer
 from solidlsp.ls_config import Language
 from solidlsp.ls_types import SymbolKind
-from test.conftest import language_tests_enabled
+from test.conftest import is_ci, language_tests_enabled
+from test.solidlsp.conftest import (
+    format_symbol_for_assert,
+    has_malformed_name,
+    request_all_symbols,
+)
 
 pytestmark = [
     pytest.mark.pascal,
-    pytest.mark.skipif(not language_tests_enabled(Language.PASCAL), reason="Pascal tests are disabled (pasls/fpc not available)"),
+    pytest.mark.skipif(
+        not language_tests_enabled(Language.PASCAL),
+        reason="Pascal tests are disabled (pasls/fpc not available)",
+    ),
 ]
 
 
 @pytest.mark.pascal
+@pytest.mark.skipif(
+    shutil.which("fpc") is None and not is_ci,
+    reason="Free Pascal compiler is not available",
+)
 class TestPascalLanguageServerBasics:
     """Test basic functionality of the Pascal language server."""
 
     @pytest.mark.parametrize("language_server", [Language.PASCAL], indirect=True)
-    def test_pascal_language_server_initialization(self, language_server: SolidLanguageServer) -> None:
+    def test_pascal_language_server_initialization(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test that Pascal language server can be initialized successfully."""
         assert language_server is not None
         assert language_server.language == Language.PASCAL
 
     @pytest.mark.parametrize("language_server", [Language.PASCAL], indirect=True)
-    def test_pascal_request_document_symbols(self, language_server: SolidLanguageServer) -> None:
+    def test_pascal_request_document_symbols(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_document_symbols for Pascal files.
 
         genericptr pasls returns proper SymbolKind values:
@@ -42,13 +60,17 @@ class TestPascalLanguageServerBasics:
         - Classes: kind=5 (Class)
         """
         # Test getting symbols from main.pas
-        all_symbols, _root_symbols = language_server.request_document_symbols("main.pas").get_all_symbols_and_roots()
+        all_symbols, _root_symbols = language_server.request_document_symbols(
+            "main.pas"
+        ).get_all_symbols_and_roots()
 
         # Should have symbols
         assert len(all_symbols) > 0, "Should have symbols in main.pas"
 
         # Should detect standalone functions (SymbolKind.Function = 12)
-        function_symbols = [s for s in all_symbols if s.get("kind") == SymbolKind.Function]
+        function_symbols = [
+            s for s in all_symbols if s.get("kind") == SymbolKind.Function
+        ]
         function_names = [s["name"] for s in function_symbols]
 
         assert "CalculateSum" in function_names, "Should find CalculateSum function"
@@ -67,7 +89,9 @@ class TestPascalLanguageServerBasics:
 
         pasls returns class methods with SymbolKind.Method (kind 6), not Function (kind 12).
         """
-        all_symbols, _root_symbols = language_server.request_document_symbols("main.pas").get_all_symbols_and_roots()
+        all_symbols, _root_symbols = language_server.request_document_symbols(
+            "main.pas"
+        ).get_all_symbols_and_roots()
 
         # Get all method symbols (pasls returns class methods as SymbolKind.Method = 6)
         method_symbols = [s for s in all_symbols if s.get("kind") == SymbolKind.Method]
@@ -80,58 +104,90 @@ class TestPascalLanguageServerBasics:
             assert found, f"Should find method '{method}'"
 
         # Should detect TUserManager methods
-        expected_manager_methods = ["Create", "Destroy", "AddUser", "GetUserCount", "FindUserByName"]
+        expected_manager_methods = [
+            "Create",
+            "Destroy",
+            "AddUser",
+            "GetUserCount",
+            "FindUserByName",
+        ]
         for method in expected_manager_methods:
             found = method in method_names
             assert found, f"Should find method '{method}'"
 
     @pytest.mark.parametrize("language_server", [Language.PASCAL], indirect=True)
-    def test_pascal_helper_unit_symbols(self, language_server: SolidLanguageServer) -> None:
+    def test_pascal_helper_unit_symbols(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test function detection in Helper unit."""
         # Test with lib/helper.pas
-        helper_all_symbols, _helper_root_symbols = language_server.request_document_symbols("lib/helper.pas").get_all_symbols_and_roots()
+        helper_all_symbols, _helper_root_symbols = (
+            language_server.request_document_symbols(
+                "lib/helper.pas"
+            ).get_all_symbols_and_roots()
+        )
 
         # Should have symbols
         assert len(helper_all_symbols) > 0, "Helper unit should have symbols"
 
         # Extract function symbols
-        function_symbols = [s for s in helper_all_symbols if s.get("kind") == SymbolKind.Function]
+        function_symbols = [
+            s for s in helper_all_symbols if s.get("kind") == SymbolKind.Function
+        ]
         function_names = [s["name"] for s in function_symbols]
 
         # Should detect standalone functions
         expected_functions = ["GetHelperMessage", "MultiplyNumbers", "LogMessage"]
         for func_name in expected_functions:
-            assert func_name in function_names, f"Should find {func_name} function in Helper unit"
+            assert (
+                func_name in function_names
+            ), f"Should find {func_name} function in Helper unit"
 
         # Should also detect THelper class methods (returned as SymbolKind.Method = 6)
-        method_symbols = [s for s in helper_all_symbols if s.get("kind") == SymbolKind.Method]
+        method_symbols = [
+            s for s in helper_all_symbols if s.get("kind") == SymbolKind.Method
+        ]
         method_names = [s["name"] for s in method_symbols]
         assert "FormatString" in method_names, "Should find FormatString method"
         assert "IsEven" in method_names, "Should find IsEven method"
 
     @pytest.mark.parametrize("language_server", [Language.PASCAL], indirect=True)
-    def test_pascal_cross_file_references(self, language_server: SolidLanguageServer) -> None:
+    def test_pascal_cross_file_references(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test that Pascal LSP can handle cross-file references."""
         # main.pas uses Helper unit
-        main_symbols, _main_roots = language_server.request_document_symbols("main.pas").get_all_symbols_and_roots()
-        helper_symbols, _helper_roots = language_server.request_document_symbols("lib/helper.pas").get_all_symbols_and_roots()
+        main_symbols, _main_roots = language_server.request_document_symbols(
+            "main.pas"
+        ).get_all_symbols_and_roots()
+        helper_symbols, _helper_roots = language_server.request_document_symbols(
+            "lib/helper.pas"
+        ).get_all_symbols_and_roots()
 
         # Verify both files have symbols
         assert len(main_symbols) > 0, "main.pas should have symbols"
         assert len(helper_symbols) > 0, "helper.pas should have symbols"
 
         # Verify GetHelperMessage is in Helper unit
-        helper_function_names = [s["name"] for s in helper_symbols if s.get("kind") == SymbolKind.Function]
-        assert "GetHelperMessage" in helper_function_names, "Helper unit should export GetHelperMessage"
+        helper_function_names = [
+            s["name"] for s in helper_symbols if s.get("kind") == SymbolKind.Function
+        ]
+        assert (
+            "GetHelperMessage" in helper_function_names
+        ), "Helper unit should export GetHelperMessage"
 
     @pytest.mark.parametrize("language_server", [Language.PASCAL], indirect=True)
-    def test_pascal_symbol_locations(self, language_server: SolidLanguageServer) -> None:
+    def test_pascal_symbol_locations(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test that symbols have correct location information.
 
         Note: genericptr pasls returns the interface declaration location (line ~41),
         not the implementation location (line ~115).
         """
-        all_symbols, _root_symbols = language_server.request_document_symbols("main.pas").get_all_symbols_and_roots()
+        all_symbols, _root_symbols = language_server.request_document_symbols(
+            "main.pas"
+        ).get_all_symbols_and_roots()
 
         # Find CalculateSum function
         calc_symbols = [s for s in all_symbols if s.get("name") == "CalculateSum"]
@@ -154,12 +210,18 @@ class TestPascalLanguageServerBasics:
 
         # CalculateSum is declared at line 41 in main.pas (0-indexed would be 40)
         # genericptr pasls returns interface declaration location
-        assert 35 <= line <= 45, f"CalculateSum should be around line 41 (interface), got {line}"
+        assert (
+            35 <= line <= 45
+        ), f"CalculateSum should be around line 41 (interface), got {line}"
 
     @pytest.mark.parametrize("language_server", [Language.PASCAL], indirect=True)
-    def test_pascal_namespace_symbol(self, language_server: SolidLanguageServer) -> None:
+    def test_pascal_namespace_symbol(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test that genericptr pasls returns Interface namespace symbol."""
-        all_symbols, _root_symbols = language_server.request_document_symbols("main.pas").get_all_symbols_and_roots()
+        all_symbols, _root_symbols = language_server.request_document_symbols(
+            "main.pas"
+        ).get_all_symbols_and_roots()
 
         # genericptr pasls adds an "Interface" namespace symbol
         symbol_names = [s["name"] for s in all_symbols]
@@ -171,7 +233,9 @@ class TestPascalLanguageServerBasics:
         _ = symbol_names  # used for potential future assertions
 
     @pytest.mark.parametrize("language_server", [Language.PASCAL], indirect=True)
-    def test_pascal_hover_with_doc_comments(self, language_server: SolidLanguageServer) -> None:
+    def test_pascal_hover_with_doc_comments(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test that hover returns documentation comments.
 
         CalculateSum has /// style doc comments that should appear in hover.
@@ -184,12 +248,39 @@ class TestPascalLanguageServerBasics:
         # Extract hover content - handle both dict and object formats
         if isinstance(hover, dict):
             contents = hover.get("contents", {})
-            value = contents.get("value", "") if isinstance(contents, dict) else str(contents)
+            value = (
+                contents.get("value", "")
+                if isinstance(contents, dict)
+                else str(contents)
+            )
         else:
-            value = hover.contents.value if hasattr(hover.contents, "value") else str(hover.contents)
+            value = (
+                hover.contents.value
+                if hasattr(hover.contents, "value")
+                else str(hover.contents)
+            )
 
         # Should contain the function signature
-        assert "CalculateSum" in value, f"Hover should show function name. Got: {value[:500]}"
+        assert (
+            "CalculateSum" in value
+        ), f"Hover should show function name. Got: {value[:500]}"
 
         # Should contain the doc comment
-        assert "Calculates the sum" in value, f"Hover should include doc comment. Got: {value[:500]}"
+        assert (
+            "Calculates the sum" in value
+        ), f"Hover should include doc comment. Got: {value[:500]}"
+
+    @pytest.mark.parametrize("language_server", [Language.PASCAL], indirect=True)
+    def test_bare_symbol_names(self, language_server) -> None:
+        all_symbols = request_all_symbols(language_server)
+        malformed_symbols = []
+        for s in all_symbols:
+            if s["kind"] == SymbolKind.Package:
+                continue
+            if has_malformed_name(s):
+                malformed_symbols.append(s)
+        if malformed_symbols:
+            pytest.fail(
+                f"Found malformed symbols: {[format_symbol_for_assert(sym) for sym in malformed_symbols]}",
+                pytrace=False,
+            )

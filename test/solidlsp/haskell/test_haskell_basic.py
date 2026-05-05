@@ -19,6 +19,13 @@ import pytest
 
 from solidlsp.ls import SolidLanguageServer
 from solidlsp.ls_config import Language
+from solidlsp.ls_types import SymbolKind
+from test.solidlsp.conftest import (
+    format_symbol_for_assert,
+    has_malformed_name,
+    request_all_symbols,
+)
+from test.solidlsp.util.diagnostics import assert_file_diagnostics
 
 
 @pytest.mark.haskell
@@ -34,7 +41,9 @@ class TestHaskellLanguageServer:
         - All exported functions with correct names
         - Module structure
         """
-        all_symbols, _ = language_server.request_document_symbols("src/Calculator.hs").get_all_symbols_and_roots()
+        all_symbols, _ = language_server.request_document_symbols(
+            "src/Calculator.hs"
+        ).get_all_symbols_and_roots()
         symbol_names = {s["name"] for s in all_symbols}
 
         # Verify exact set of expected top-level symbols
@@ -52,7 +61,9 @@ class TestHaskellLanguageServer:
         assert not missing, f"Missing expected symbols in Calculator.hs: {missing}"
 
         # Verify Calculator data type exists
-        calculator_symbol = next((s for s in all_symbols if s["name"] == "Calculator"), None)
+        calculator_symbol = next(
+            (s for s in all_symbols if s["name"] == "Calculator"), None
+        )
         assert calculator_symbol is not None, "Calculator data type not found"
 
         # The Calculator should be identified as a data type
@@ -71,7 +82,9 @@ class TestHaskellLanguageServer:
         Verifies Serena identifies all helper functions that are imported
         and used by Calculator module.
         """
-        all_symbols, _ = language_server.request_document_symbols("src/Helper.hs").get_all_symbols_and_roots()
+        all_symbols, _ = language_server.request_document_symbols(
+            "src/Helper.hs"
+        ).get_all_symbols_and_roots()
         symbol_names = {s["name"] for s in all_symbols}
 
         # Verify expected helper functions (module name may also appear)
@@ -97,14 +110,18 @@ class TestHaskellLanguageServer:
 
         Verifies Serena can identify cross-module dependencies.
         """
-        all_symbols, _ = language_server.request_document_symbols("app/Main.hs").get_all_symbols_and_roots()
+        all_symbols, _ = language_server.request_document_symbols(
+            "app/Main.hs"
+        ).get_all_symbols_and_roots()
         symbol_names = {s["name"] for s in all_symbols}
 
         # Main.hs should have the main function
         assert "main" in symbol_names, "Main.hs should contain 'main' function"
 
     @pytest.mark.parametrize("language_server", [Language.HASKELL], indirect=True)
-    def test_cross_file_references_validateNumber(self, language_server: SolidLanguageServer):
+    def test_cross_file_references_validateNumber(
+        self, language_server: SolidLanguageServer
+    ):
         """
         Test cross-file reference tracking for validateNumber function.
 
@@ -115,10 +132,14 @@ class TestHaskellLanguageServer:
         This proves Serena can track function usage across module boundaries.
         """
         # Get references to validateNumber (defined at line 9, 0-indexed = line 8)
-        references = language_server.request_references("src/Helper.hs", line=8, column=0)
+        references = language_server.request_references(
+            "src/Helper.hs", line=8, column=0
+        )
 
         # Should find at least: definition in Helper.hs + 2 usages in Calculator.hs
-        assert len(references) >= 2, f"Expected at least 2 references to validateNumber (used in add and subtract), got {len(references)}"
+        assert (
+            len(references) >= 2
+        ), f"Expected at least 2 references to validateNumber (used in add and subtract), got {len(references)}"
 
         # Verify we have references in Calculator.hs
         reference_paths = [ref["relativePath"] for ref in references]
@@ -130,7 +151,9 @@ class TestHaskellLanguageServer:
         )
 
     @pytest.mark.parametrize("language_server", [Language.HASKELL], indirect=True)
-    def test_within_file_references_isNegative(self, language_server: SolidLanguageServer):
+    def test_within_file_references_isNegative(
+        self, language_server: SolidLanguageServer
+    ):
         """
         Test within-file reference tracking for isNegative function.
 
@@ -138,10 +161,14 @@ class TestHaskellLanguageServer:
         This proves Serena can track intra-module function calls.
         """
         # isNegative defined at line 17 (0-indexed = line 16)
-        references = language_server.request_references("src/Helper.hs", line=16, column=0)
+        references = language_server.request_references(
+            "src/Helper.hs", line=16, column=0
+        )
 
         # Should find: definition + usage in absolute function
-        assert len(references) >= 1, f"Expected at least 1 reference to isNegative (used in absolute), got {len(references)}"
+        assert (
+            len(references) >= 1
+        ), f"Expected at least 1 reference to isNegative (used in absolute), got {len(references)}"
 
         # All references should be in Helper.hs
         reference_paths = [ref["relativePath"] for ref in references]
@@ -161,10 +188,14 @@ class TestHaskellLanguageServer:
         This proves Serena can track cross-module function calls from executable code.
         """
         # Test 'add' function references (defined in Calculator.hs:20, 0-indexed = line 19)
-        add_refs = language_server.request_references("src/Calculator.hs", line=19, column=0)
+        add_refs = language_server.request_references(
+            "src/Calculator.hs", line=19, column=0
+        )
 
         # Should find references in Main.hs and possibly Calculator.hs (calculate function uses it)
-        assert len(add_refs) >= 1, f"Expected at least 1 reference to 'add', got {len(add_refs)}"
+        assert (
+            len(add_refs) >= 1
+        ), f"Expected at least 1 reference to 'add', got {len(add_refs)}"
 
         add_ref_paths = [ref["relativePath"] for ref in add_refs]
         # Should have at least one reference in Main.hs or Calculator.hs
@@ -173,7 +204,9 @@ class TestHaskellLanguageServer:
         ), f"Expected 'add' to be referenced in Main.hs or Calculator.hs, got: {add_ref_paths}"
 
     @pytest.mark.parametrize("language_server", [Language.HASKELL], indirect=True)
-    def test_multiply_function_usage_in_calculate(self, language_server: SolidLanguageServer):
+    def test_multiply_function_usage_in_calculate(
+        self, language_server: SolidLanguageServer
+    ):
         """
         Test that multiply function usage is tracked within Calculator module.
 
@@ -184,10 +217,14 @@ class TestHaskellLanguageServer:
         This proves Serena can track function references even when called indirectly.
         """
         # multiply defined at line 28 (0-indexed = line 27)
-        multiply_refs = language_server.request_references("src/Calculator.hs", line=27, column=0)
+        multiply_refs = language_server.request_references(
+            "src/Calculator.hs", line=27, column=0
+        )
 
         # Should find at least the usage in calculate function
-        assert len(multiply_refs) >= 1, f"Expected at least 1 reference to 'multiply', got {len(multiply_refs)}"
+        assert (
+            len(multiply_refs) >= 1
+        ), f"Expected at least 1 reference to 'multiply', got {len(multiply_refs)}"
 
         # Should have reference in Calculator.hs (calculate function)
         multiply_ref_paths = [ref["relativePath"] for ref in multiply_refs]
@@ -196,7 +233,9 @@ class TestHaskellLanguageServer:
         ), f"Expected 'multiply' to be referenced in Calculator.hs, got: {multiply_ref_paths}"
 
     @pytest.mark.parametrize("language_server", [Language.HASKELL], indirect=True)
-    def test_data_type_constructor_references(self, language_server: SolidLanguageServer):
+    def test_data_type_constructor_references(
+        self, language_server: SolidLanguageServer
+    ):
         """
         Test that Calculator data type constructor usage is tracked.
 
@@ -207,13 +246,47 @@ class TestHaskellLanguageServer:
         This proves Serena can track data type constructor references.
         """
         # Calculator data type defined at line 14 (0-indexed = line 13)
-        calculator_refs = language_server.request_references("src/Calculator.hs", line=13, column=5)
+        calculator_refs = language_server.request_references(
+            "src/Calculator.hs", line=13, column=5
+        )
 
         # Should find usage in Main.hs
-        assert len(calculator_refs) >= 1, f"Expected at least 1 reference to Calculator constructor, got {len(calculator_refs)}"
+        assert (
+            len(calculator_refs) >= 1
+        ), f"Expected at least 1 reference to Calculator constructor, got {len(calculator_refs)}"
 
         # Should have at least one reference in Main.hs or Calculator.hs
         calc_ref_paths = [ref["relativePath"] for ref in calculator_refs]
         assert any(
             "Main.hs" in path or "Calculator.hs" in path for path in calc_ref_paths
         ), f"Expected Calculator to be referenced in Main.hs or Calculator.hs, got: {calc_ref_paths}"
+
+    @pytest.mark.parametrize("language_server", [Language.HASKELL], indirect=True)
+    def test_bare_symbol_names(self, language_server) -> None:
+        all_symbols = request_all_symbols(language_server)
+        malformed_symbols = []
+        for s in all_symbols:
+            if s["kind"] == SymbolKind.Module:
+                continue
+            if has_malformed_name(s):
+                malformed_symbols.append(s)
+        if malformed_symbols:
+            diagnostics = [
+                {
+                    "formatted": format_symbol_for_assert(sym),
+                    "name": sym["name"],
+                    "kind": SymbolKind(sym["kind"]).name,
+                    "detail": sym.get("detail"),
+                }
+                for sym in malformed_symbols
+            ]
+            pytest.fail(f"Found malformed symbols: {diagnostics}", pytrace=False)
+
+    @pytest.mark.parametrize("language_server", [Language.HASKELL], indirect=True)
+    def test_file_diagnostics(self, language_server: SolidLanguageServer) -> None:
+        assert_file_diagnostics(
+            language_server,
+            "src/DiagnosticsSample.hs",
+            (),
+            min_count=1,
+        )

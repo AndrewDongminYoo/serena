@@ -12,12 +12,16 @@ log = logging.getLogger(__name__)
 
 
 class PromptTemplate(ToStringMixin, ParameterizedTemplateInterface):
-    def __init__(self, name: str, jinja_template_string: str) -> None:
+    def __init__(self, name: str, jinja_template_string: str, path: str) -> None:
         self.name = name
+        self.path = path
         self._jinja_template = JinjaTemplate(jinja_template_string.strip())
 
     def _tostring_exclude_private(self) -> bool:
         return True
+
+    def get_template_string(self) -> str:
+        return self._jinja_template.get_template_string()
 
     def render(self, **params: Any) -> str:
         return self._jinja_template.render(**params)
@@ -81,7 +85,9 @@ class _MultiLangContainer(Generic[T], ToStringMixin):
         """The language codes for which items are registered in the container."""
         return list(self._lang2item.keys())
 
-    def add_item(self, item: T, lang_code: str = DEFAULT_LANG_CODE, allow_overwrite: bool = False) -> None:
+    def add_item(
+        self, item: T, lang_code: str = DEFAULT_LANG_CODE, allow_overwrite: bool = False
+    ) -> None:
         """Adds an item to the container, representing the same semantic entity as the other items in the container but in a different language.
 
         :param item: the item to add
@@ -89,13 +95,19 @@ class _MultiLangContainer(Generic[T], ToStringMixin):
         :param allow_overwrite: if True, allow overwriting an existing entry for the same language
         """
         if not allow_overwrite and lang_code in self._lang2item:
-            raise KeyError(f"Item for language '{lang_code}' already registered for name '{self.name}'")
+            raise KeyError(
+                f"Item for language '{lang_code}' already registered for name '{self.name}'"
+            )
         self._lang2item[lang_code] = item
 
     def has_item(self, lang_code: str = DEFAULT_LANG_CODE) -> bool:
         return lang_code in self._lang2item
 
-    def get_item(self, lang: str = DEFAULT_LANG_CODE, fallback_mode: LanguageFallbackMode = LanguageFallbackMode.EXCEPTION) -> T:
+    def get_item(
+        self,
+        lang: str = DEFAULT_LANG_CODE,
+        fallback_mode: LanguageFallbackMode = LanguageFallbackMode.EXCEPTION,
+    ) -> T:
         """
         Gets the item for the given language.
 
@@ -107,12 +119,16 @@ class _MultiLangContainer(Generic[T], ToStringMixin):
             return self._lang2item[lang]
         except KeyError as outer_e:
             if fallback_mode == LanguageFallbackMode.EXCEPTION:
-                raise KeyError(f"Item for language '{lang}' not found for name '{self.name}'") from outer_e
+                raise KeyError(
+                    f"Item for language '{lang}' not found for name '{self.name}'"
+                ) from outer_e
             if fallback_mode == LanguageFallbackMode.ANY:
                 try:
                     return next(iter(self._lang2item.values()))
                 except StopIteration as e:
-                    raise KeyError(f"No items registered for any language in container '{self.name}'") from e
+                    raise KeyError(
+                        f"No items registered for any language in container '{self.name}'"
+                    ) from e
             if fallback_mode == LanguageFallbackMode.USE_DEFAULT_LANG:
                 try:
                     return self._lang2item[DEFAULT_LANG_CODE]
@@ -142,7 +158,10 @@ class MultiLangPromptTemplate(ParameterizedTemplateInterface):
         return self._prompts_container.name
 
     def add_prompt_template(
-        self, prompt_template: PromptTemplate, lang_code: str = DEFAULT_LANG_CODE, allow_overwrite: bool = False
+        self,
+        prompt_template: PromptTemplate,
+        lang_code: str = DEFAULT_LANG_CODE,
+        allow_overwrite: bool = False,
     ) -> None:
         """
         Adds a prompt template for a new language.
@@ -165,7 +184,9 @@ class MultiLangPromptTemplate(ParameterizedTemplateInterface):
         self._prompts_container.add_item(prompt_template, lang_code, allow_overwrite)
 
     def get_prompt_template(
-        self, lang_code: str = DEFAULT_LANG_CODE, fallback_mode: LanguageFallbackMode = LanguageFallbackMode.EXCEPTION
+        self,
+        lang_code: str = DEFAULT_LANG_CODE,
+        fallback_mode: LanguageFallbackMode = LanguageFallbackMode.EXCEPTION,
     ) -> PromptTemplate:
         return self._prompts_container.get_item(lang_code, fallback_mode)
 
@@ -218,7 +239,11 @@ class MultiLangPromptCollection:
     The prompt names must be unique (for the same language) within the collection.
     """
 
-    def __init__(self, prompts_dir: str | list[str], fallback_mode: LanguageFallbackMode = LanguageFallbackMode.EXCEPTION) -> None:
+    def __init__(
+        self,
+        prompts_dir: str | list[str],
+        fallback_mode: LanguageFallbackMode = LanguageFallbackMode.EXCEPTION,
+    ) -> None:
         """
         :param prompts_dir: the directory containing the prompt templates and prompt lists.
             If a list is provided, will look for prompt templates in the dirs from left to right
@@ -249,6 +274,7 @@ class MultiLangPromptCollection:
         self,
         name: str,
         template_str: str,
+        path: str,
         lang_code: str = DEFAULT_LANG_CODE,
         on_name_collision: Literal["skip", "overwrite", "raise"] = "raise",
     ) -> None:
@@ -259,7 +285,7 @@ class MultiLangPromptCollection:
         :param on_name_collision: how to deal with name/lang_code collisions
         """
         allow_overwrite = False
-        prompt_template = PromptTemplate(name, template_str)
+        prompt_template = PromptTemplate(name, template_str, path=path)
         mlpt = self._multi_lang_prompt_templates.get(name)
         if mlpt is None:
             mlpt = MultiLangPromptTemplate(name)
@@ -272,7 +298,9 @@ class MultiLangPromptCollection:
                 return
             elif on_name_collision == "overwrite":
                 allow_overwrite = True
-        mlpt.add_prompt_template(prompt_template, lang_code=lang_code, allow_overwrite=allow_overwrite)
+        mlpt.add_prompt_template(
+            prompt_template, lang_code=lang_code, allow_overwrite=allow_overwrite
+        )
 
     def _add_prompt_list(
         self,
@@ -300,9 +328,17 @@ class MultiLangPromptCollection:
                 return
             elif on_name_collision == "overwrite":
                 allow_overwrite = True
-        multilang_prompt_list.add_item(PromptList(prompt_list), lang_code=lang_code, allow_overwrite=allow_overwrite)
+        multilang_prompt_list.add_item(
+            PromptList(prompt_list),
+            lang_code=lang_code,
+            allow_overwrite=allow_overwrite,
+        )
 
-    def _load_from_disc(self, prompts_dir: str, on_name_collision: Literal["skip", "overwrite", "raise"] = "raise") -> None:
+    def _load_from_disc(
+        self,
+        prompts_dir: str,
+        on_name_collision: Literal["skip", "overwrite", "raise"] = "raise",
+    ) -> None:
         """Loads all prompt templates and prompt lists from yaml files in the given directory.
 
         :param prompts_dir:
@@ -318,16 +354,27 @@ class MultiLangPromptCollection:
             try:
                 prompts_data = data["prompts"]
             except KeyError as e:
-                raise KeyError(f"Invalid yaml structure (missing 'prompts' key) in file {path}") from e
+                raise KeyError(
+                    f"Invalid yaml structure (missing 'prompts' key) in file {path}"
+                ) from e
 
             lang_code = prompts_data.get("lang", DEFAULT_LANG_CODE)
             # add the data to the collection
             for prompt_name, prompt_template_or_list in prompts_data.items():
                 if isinstance(prompt_template_or_list, list):
-                    self._add_prompt_list(prompt_name, prompt_template_or_list, lang_code=lang_code, on_name_collision=on_name_collision)
+                    self._add_prompt_list(
+                        prompt_name,
+                        prompt_template_or_list,
+                        lang_code=lang_code,
+                        on_name_collision=on_name_collision,
+                    )
                 elif isinstance(prompt_template_or_list, str):
                     self._add_prompt_template(
-                        prompt_name, prompt_template_or_list, lang_code=lang_code, on_name_collision=on_name_collision
+                        prompt_name,
+                        prompt_template_or_list,
+                        lang_code=lang_code,
+                        path=path,
+                        on_name_collision=on_name_collision,
                     )
                 else:
                     raise ValueError(
@@ -343,7 +390,9 @@ class MultiLangPromptCollection:
     def __len__(self) -> int:
         return len(self._multi_lang_prompt_templates)
 
-    def get_multilang_prompt_template(self, prompt_name: str) -> MultiLangPromptTemplate:
+    def get_multilang_prompt_template(
+        self, prompt_name: str
+    ) -> MultiLangPromptTemplate:
         """The MultiLangPromptTemplate object for the given prompt name. For single-language use cases, you should use the `get_prompt_template` method instead."""
         return self._multi_lang_prompt_templates[prompt_name]
 
@@ -356,23 +405,31 @@ class MultiLangPromptCollection:
         lang_code: str = DEFAULT_LANG_CODE,
     ) -> PromptTemplate:
         """The PromptTemplate object for the given prompt name and language code."""
-        return self.get_multilang_prompt_template(prompt_name).get_prompt_template(lang_code=lang_code, fallback_mode=self.fallback_mode)
+        return self.get_multilang_prompt_template(prompt_name).get_prompt_template(
+            lang_code=lang_code, fallback_mode=self.fallback_mode
+        )
 
     def get_prompt_template_parameters(self, prompt_name: str) -> list[str]:
         """The parameters of the PromptTemplate object for the given prompt name."""
         return self.get_multilang_prompt_template(prompt_name).get_parameters()
 
-    def get_prompt_list(self, prompt_name: str, lang_code: str = DEFAULT_LANG_CODE) -> PromptList:
+    def get_prompt_list(
+        self, prompt_name: str, lang_code: str = DEFAULT_LANG_CODE
+    ) -> PromptList:
         """The PromptList object for the given prompt name and language code."""
         return self.get_multilang_prompt_list(prompt_name).get_item(lang_code)
 
-    def _has_prompt_list(self, prompt_name: str, lang_code: str = DEFAULT_LANG_CODE) -> bool:
+    def _has_prompt_list(
+        self, prompt_name: str, lang_code: str = DEFAULT_LANG_CODE
+    ) -> bool:
         multi_lang_prompt_list = self._multi_lang_prompt_lists.get(prompt_name)
         if multi_lang_prompt_list is None:
             return False
         return multi_lang_prompt_list.has_item(lang_code)
 
-    def _has_prompt_template(self, prompt_name: str, lang_code: str = DEFAULT_LANG_CODE) -> bool:
+    def _has_prompt_template(
+        self, prompt_name: str, lang_code: str = DEFAULT_LANG_CODE
+    ) -> bool:
         multi_lang_prompt_template = self._multi_lang_prompt_templates.get(prompt_name)
         if multi_lang_prompt_template is None:
             return False
@@ -385,4 +442,6 @@ class MultiLangPromptCollection:
         lang_code: str = DEFAULT_LANG_CODE,
     ) -> str:
         """Renders the prompt template for the given prompt name and language code."""
-        return self.get_prompt_template(prompt_name, lang_code=lang_code).render(**params)
+        return self.get_prompt_template(prompt_name, lang_code=lang_code).render(
+            **params
+        )

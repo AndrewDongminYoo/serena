@@ -18,7 +18,12 @@ from solidlsp.ls_types import SymbolKind
 from . import EXPERT_UNAVAILABLE, EXPERT_UNAVAILABLE_REASON
 
 # These marks will be applied to all tests in this module
-pytestmark = [pytest.mark.elixir, pytest.mark.skipif(EXPERT_UNAVAILABLE, reason=f"Next LS not available: {EXPERT_UNAVAILABLE_REASON}")]
+pytestmark = [
+    pytest.mark.elixir,
+    pytest.mark.skipif(
+        EXPERT_UNAVAILABLE, reason=f"Next LS not available: {EXPERT_UNAVAILABLE_REASON}"
+    ),
+]
 
 
 class TestElixirLanguageServerSymbols:
@@ -28,7 +33,9 @@ class TestElixirLanguageServerSymbols:
         reason="Expert 0.1.0 bug: document_symbols returns nil for some files (FunctionClauseError in XPExpert.EngineApi.document_symbols/2)"
     )
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_containing_symbol_function(self, language_server: SolidLanguageServer) -> None:
+    def test_request_containing_symbol_function(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_containing_symbol for a function."""
         # Test for a position inside the create_user function
         file_path = os.path.join("lib", "services.ex")
@@ -45,18 +52,28 @@ class TestElixirLanguageServerSymbols:
         if create_user_line is None:
             pytest.skip("Could not find create_user function")
 
-        containing_symbol = language_server.request_containing_symbol(file_path, create_user_line, 10, include_body=True)
+        containing_symbol = language_server.request_containing_symbol(
+            file_path, create_user_line, 10, include_body=True
+        )
 
         # Verify that we found the containing symbol
         if containing_symbol:
             # Next LS returns the full function signature instead of just the function name
-            assert containing_symbol["name"] == "def create_user(pid, id, name, email, roles \\\\ [])"
-            assert containing_symbol["kind"] == SymbolKind.Method or containing_symbol["kind"] == SymbolKind.Function
+            assert (
+                containing_symbol["name"]
+                == "def create_user(pid, id, name, email, roles \\\\ [])"
+            )
+            assert (
+                containing_symbol["kind"] == SymbolKind.Method
+                or containing_symbol["kind"] == SymbolKind.Function
+            )
             if "body" in containing_symbol:
-                assert "def create_user" in containing_symbol["body"]
+                assert "def create_user" in containing_symbol["body"].get_text()
 
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_containing_symbol_module(self, language_server: SolidLanguageServer) -> None:
+    def test_request_containing_symbol_module(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_containing_symbol for a module."""
         # Test for a position inside the UserService module but outside any function
         file_path = os.path.join("lib", "services.ex")
@@ -73,15 +90,22 @@ class TestElixirLanguageServerSymbols:
         if user_service_line is None:
             pytest.skip("Could not find UserService module")
 
-        containing_symbol = language_server.request_containing_symbol(file_path, user_service_line, 5)
+        containing_symbol = language_server.request_containing_symbol(
+            file_path, user_service_line, 5
+        )
 
         # Verify that we found the containing symbol
         if containing_symbol:
             assert "UserService" in containing_symbol["name"]
-            assert containing_symbol["kind"] == SymbolKind.Module or containing_symbol["kind"] == SymbolKind.Class
+            assert (
+                containing_symbol["kind"] == SymbolKind.Module
+                or containing_symbol["kind"] == SymbolKind.Class
+            )
 
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_containing_symbol_nested(self, language_server: SolidLanguageServer) -> None:
+    def test_request_containing_symbol_nested(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_containing_symbol with nested scopes."""
         # Test for a position inside a function which is inside a module
         file_path = os.path.join("lib", "services.ex")
@@ -98,7 +122,9 @@ class TestElixirLanguageServerSymbols:
         if function_body_line is None:
             pytest.skip("Could not find function body")
 
-        containing_symbol = language_server.request_containing_symbol(file_path, function_body_line, 15)
+        containing_symbol = language_server.request_containing_symbol(
+            file_path, function_body_line, 15
+        )
 
         # Verify that we found the innermost containing symbol (the function)
         if containing_symbol:
@@ -106,7 +132,9 @@ class TestElixirLanguageServerSymbols:
             assert any(name in containing_symbol["name"] for name in expected_names)
 
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_containing_symbol_none(self, language_server: SolidLanguageServer) -> None:
+    def test_request_containing_symbol_none(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_containing_symbol for a position with no containing symbol."""
         # Test for a position outside any function/module (e.g., in module doc)
         file_path = os.path.join("lib", "services.ex")
@@ -115,18 +143,28 @@ class TestElixirLanguageServerSymbols:
 
         # Should return None or an empty dictionary, or the top-level module
         # This is acceptable behavior for module-level positions
-        assert containing_symbol is None or containing_symbol == {} or "TestRepo.Services" in str(containing_symbol)
+        assert (
+            containing_symbol is None
+            or containing_symbol == {}
+            or "TestRepo.Services" in str(containing_symbol)
+        )
 
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_referencing_symbols_struct(self, language_server: SolidLanguageServer) -> None:
+    def test_request_referencing_symbols_struct(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_referencing_symbols for a struct."""
         # Test referencing symbols for User struct
         file_path = os.path.join("lib", "models.ex")
 
-        symbols = language_server.request_document_symbols(file_path).get_all_symbols_and_roots()
+        symbols = language_server.request_document_symbols(
+            file_path
+        ).get_all_symbols_and_roots()
         user_symbol = None
         for symbol_group in symbols:
-            user_symbol = next((s for s in symbol_group if "User" in s.get("name", "")), None)
+            user_symbol = next(
+                (s for s in symbol_group if "User" in s.get("name", "")), None
+            )
             if user_symbol:
                 break
 
@@ -135,25 +173,35 @@ class TestElixirLanguageServerSymbols:
 
         sel_start = user_symbol["selectionRange"]["start"]
         ref_symbols = [
-            ref.symbol for ref in language_server.request_referencing_symbols(file_path, sel_start["line"], sel_start["character"])
+            ref.symbol
+            for ref in language_server.request_referencing_symbols(
+                file_path, sel_start["line"], sel_start["character"]
+            )
         ]
 
         if ref_symbols:
             services_references = [
                 symbol
                 for symbol in ref_symbols
-                if "location" in symbol and "uri" in symbol["location"] and "services.ex" in symbol["location"]["uri"]
+                if "location" in symbol
+                and "uri" in symbol["location"]
+                and "services.ex" in symbol["location"]["uri"]
             ]
             # We expect some references from services.ex
             assert len(services_references) >= 0  # At least attempt to find references
 
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_referencing_symbols_none(self, language_server: SolidLanguageServer) -> None:
+    def test_request_referencing_symbols_none(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_referencing_symbols for a position with no symbol."""
         file_path = os.path.join("lib", "services.ex")
         # Line 3 is likely a blank line or comment
         try:
-            ref_symbols = [ref.symbol for ref in language_server.request_referencing_symbols(file_path, 3, 0)]
+            ref_symbols = [
+                ref.symbol
+                for ref in language_server.request_referencing_symbols(file_path, 3, 0)
+            ]
             # If we get here, make sure we got an empty result
             assert ref_symbols == [] or ref_symbols is None
         except Exception:
@@ -166,7 +214,9 @@ class TestElixirLanguageServerSymbols:
         reason="Expert 0.1.0 bug: definition request crashes (FunctionClauseError in XPExpert.Protocol.Conversions.to_elixir/2)"
     )
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_defining_symbol_function_call(self, language_server: SolidLanguageServer) -> None:
+    def test_request_defining_symbol_function_call(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_defining_symbol for a function call."""
         # Find a place where User.new is called in services.ex
         file_path = os.path.join("lib", "services.ex")
@@ -182,10 +232,14 @@ class TestElixirLanguageServerSymbols:
             pytest.skip("Could not find User.new call")
 
         # Try to find the definition of User.new
-        defining_symbol = language_server.request_defining_symbol(file_path, user_new_call_line, 15)
+        defining_symbol = language_server.request_defining_symbol(
+            file_path, user_new_call_line, 15
+        )
 
         if defining_symbol:
-            assert defining_symbol.get("name") == "new" or "User" in defining_symbol.get("name", "")
+            assert defining_symbol.get(
+                "name"
+            ) == "new" or "User" in defining_symbol.get("name", "")
             if "location" in defining_symbol and "uri" in defining_symbol["location"]:
                 assert "models.ex" in defining_symbol["location"]["uri"]
 
@@ -193,7 +247,9 @@ class TestElixirLanguageServerSymbols:
         reason="Expert 0.1.0 bug: definition request crashes (FunctionClauseError in XPExpert.Protocol.Conversions.to_elixir/2)"
     )
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_defining_symbol_struct_usage(self, language_server: SolidLanguageServer) -> None:
+    def test_request_defining_symbol_struct_usage(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_defining_symbol for a struct usage."""
         # Find a place where User struct is used in services.ex
         file_path = os.path.join("lib", "services.ex")
@@ -208,7 +264,9 @@ class TestElixirLanguageServerSymbols:
         if user_usage_line is None:
             pytest.skip("Could not find User struct usage")
 
-        defining_symbol = language_server.request_defining_symbol(file_path, user_usage_line, 30)
+        defining_symbol = language_server.request_defining_symbol(
+            file_path, user_usage_line, 30
+        )
 
         if defining_symbol:
             assert "User" in defining_symbol.get("name", "")
@@ -217,7 +275,9 @@ class TestElixirLanguageServerSymbols:
         reason="Expert 0.1.0 bug: definition request crashes (FunctionClauseError in XPExpert.Protocol.Conversions.to_elixir/2)"
     )
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_request_defining_symbol_none(self, language_server: SolidLanguageServer) -> None:
+    def test_request_defining_symbol_none(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test request_defining_symbol for a position with no symbol."""
         # Test for a position with no symbol (e.g., whitespace or comment)
         file_path = os.path.join("lib", "services.ex")
@@ -228,7 +288,9 @@ class TestElixirLanguageServerSymbols:
         assert defining_symbol is None or defining_symbol == {}
 
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_symbol_methods_integration(self, language_server: SolidLanguageServer) -> None:
+    def test_symbol_methods_integration(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test integration between different symbol methods."""
         file_path = os.path.join("lib", "models.ex")
 
@@ -245,19 +307,26 @@ class TestElixirLanguageServerSymbols:
             pytest.skip("Could not find User struct")
 
         # Test containing symbol
-        containing = language_server.request_containing_symbol(file_path, user_struct_line + 5, 10)
+        containing = language_server.request_containing_symbol(
+            file_path, user_struct_line + 5, 10
+        )
 
         if containing:
             # Test that we can find references to this symbol
             if "location" in containing and "range" in containing["location"]:
                 start_pos = containing["location"]["range"]["start"]
                 refs = [
-                    ref.symbol for ref in language_server.request_referencing_symbols(file_path, start_pos["line"], start_pos["character"])
+                    ref.symbol
+                    for ref in language_server.request_referencing_symbols(
+                        file_path, start_pos["line"], start_pos["character"]
+                    )
                 ]
                 # We should find some references or none (both are valid outcomes)
                 assert isinstance(refs, list)
 
-    @pytest.mark.xfail(reason="Flaky test, sometimes fails with an Expert-internal error")
+    @pytest.mark.xfail(
+        reason="Flaky test, sometimes fails with an Expert-internal error"
+    )
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
     def test_symbol_tree_structure(self, language_server: SolidLanguageServer) -> None:
         """Test that symbol tree structure is correctly built."""
@@ -282,7 +351,9 @@ class TestElixirLanguageServerSymbols:
             file_names = [child["name"] for child in lib_dir.get("children", [])]
             expected_modules = ["models", "services", "examples", "utils", "test_repo"]
             found_modules = [name for name in expected_modules if name in file_names]
-            assert len(found_modules) > 0, f"Expected to find some modules from {expected_modules}, but got {file_names}"
+            assert (
+                len(found_modules) > 0
+            ), f"Expected to find some modules from {expected_modules}, but got {file_names}"
 
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
     def test_request_dir_overview(self, language_server: SolidLanguageServer) -> None:
@@ -292,15 +363,21 @@ class TestElixirLanguageServerSymbols:
         # Should get an overview of the lib directory
         assert lib_overview is not None
         # Expert returns keys like 'lib/services.ex' instead of just 'lib'
-        overview_keys = list(lib_overview.keys()) if hasattr(lib_overview, "keys") else []
+        overview_keys = (
+            list(lib_overview.keys()) if hasattr(lib_overview, "keys") else []
+        )
         lib_files = [key for key in overview_keys if key.startswith("lib/")]
-        assert len(lib_files) > 0, f"Expected to find lib/ files in overview keys: {overview_keys}"
+        assert (
+            len(lib_files) > 0
+        ), f"Expected to find lib/ files in overview keys: {overview_keys}"
 
         # Should contain information about our modules
         overview_text = str(lib_overview).lower()
         expected_terms = ["models", "services", "user", "item"]
         found_terms = [term for term in expected_terms if term in overview_text]
-        assert len(found_terms) > 0, f"Expected to find some terms from {expected_terms} in overview"
+        assert (
+            len(found_terms) > 0
+        ), f"Expected to find some terms from {expected_terms} in overview"
 
     # @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
     # def test_request_document_overview(self, language_server: SolidLanguageServer) -> None:
@@ -323,7 +400,9 @@ class TestElixirLanguageServerSymbols:
     #     assert len(found_terms) > 0, f"Expected to find some terms from {expected_terms} in overview"
 
     @pytest.mark.parametrize("language_server", [Language.ELIXIR], indirect=True)
-    def test_containing_symbol_of_module_attribute(self, language_server: SolidLanguageServer) -> None:
+    def test_containing_symbol_of_module_attribute(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test containing symbol for module attributes."""
         file_path = os.path.join("lib", "models.ex")
 
@@ -339,7 +418,9 @@ class TestElixirLanguageServerSymbols:
         if attribute_line is None:
             pytest.skip("Could not find module attribute")
 
-        containing_symbol = language_server.request_containing_symbol(file_path, attribute_line, 5)
+        containing_symbol = language_server.request_containing_symbol(
+            file_path, attribute_line, 5
+        )
 
         if containing_symbol:
             # Should be contained within a module

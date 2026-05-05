@@ -62,8 +62,17 @@ function updateThemeAwareImage($img, theme = null) {
   }
 }
 
+/**
+ * Manages banner loading, display, and navigation.
+ *
+ * When automaticRotationEnabled is true, banners rotate on a timer and arrow
+ * buttons are hidden.  When false (the current default), a random initial
+ * banner is shown and the user navigates manually via arrow buttons.
+ */
 class BannerRotation {
   constructor() {
+    this.automaticRotationEnabled = false;
+
     this.platinumIndex = 0;
     this.goldIndex = 0;
     this.platinumTimer = null;
@@ -77,8 +86,18 @@ class BannerRotation {
   init() {
     let self = this;
     this.loadBanners(function () {
-      self.startPlatinumRotation();
-      self.startGoldRotation();
+      self.randomizeInitialBanner("platinum");
+      self.randomizeInitialBanner("gold");
+
+      if (self.automaticRotationEnabled) {
+        self.startPlatinumRotation();
+        self.startGoldRotation();
+        // Hide arrows entirely when rotation is automatic
+        $(".banner-arrow").hide();
+      } else {
+        self.hideArrowsIfSingle();
+        self.bindArrowButtons();
+      }
     });
   }
 
@@ -147,11 +166,55 @@ class BannerRotation {
     }, this.platinumInterval);
   }
 
+  randomizeInitialBanner(type) {
+    const slideClass =
+      type === "platinum" ? ".platinum-banner-slide" : ".gold-banner-slide";
+    const $slides = $(slideClass);
+    const total = $slides.length;
+
+    if (total === 0) return;
+
+    const randomIndex = Math.floor(Math.random() * total);
+    if (type === "platinum") {
+      this.platinumIndex = randomIndex;
+    } else {
+      this.goldIndex = randomIndex;
+    }
+    $slides.removeClass("active");
+    $slides.eq(randomIndex).addClass("active");
+  }
+
   startGoldRotation() {
     const self = this;
     this.goldTimer = setInterval(() => {
       self.rotateGold("next");
     }, this.goldInterval);
+  }
+
+  hideArrowsIfSingle() {
+    if ($(".platinum-banner-slide").length <= 1) {
+      $("#platinum-banners .banner-arrow").hide();
+    }
+    if ($(".gold-banner-slide").length <= 1) {
+      $("#gold-banners .banner-arrow").hide();
+    }
+  }
+
+  bindArrowButtons() {
+    let self = this;
+    $(".banner-arrow").on("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const target = $(this).data("target");
+      const direction = $(this).hasClass("banner-arrow-right")
+        ? "next"
+        : "prev";
+      if (target === "platinum") {
+        self.rotatePlatinum(direction);
+      } else {
+        self.rotateGold(direction);
+      }
+    });
   }
 
   rotatePlatinum(direction) {
@@ -173,9 +236,11 @@ class BannerRotation {
     // Add active class to new slide
     $slides.eq(this.platinumIndex).addClass("active");
 
-    // Reset timer
-    clearInterval(this.platinumTimer);
-    this.startPlatinumRotation();
+    // Reset timer when in automatic rotation mode
+    if (this.automaticRotationEnabled) {
+      clearInterval(this.platinumTimer);
+      this.startPlatinumRotation();
+    }
   }
 
   rotateGold(direction) {
@@ -197,9 +262,11 @@ class BannerRotation {
     // Add active class to new group
     $groups.eq(this.goldIndex).addClass("active");
 
-    // Reset timer
-    clearInterval(this.goldTimer);
-    this.startGoldRotation();
+    // Reset timer when in automatic rotation mode
+    if (this.automaticRotationEnabled) {
+      clearInterval(this.goldTimer);
+      this.startGoldRotation();
+    }
   }
 }
 
@@ -239,7 +306,9 @@ class Dashboard {
     // jQuery elements
     this.$logContainer = $("#log-container");
     this.$errorContainer = $("#error-container");
+    this.$saveLogsBtn = $("#save-logs-btn");
     this.$copyLogsBtn = $("#copy-logs-btn");
+    this.$clearLogsBtn = $("#clear-logs-btn");
     this.$menuToggle = $("#menu-toggle");
     this.$menuDropdown = $("#menu-dropdown");
     this.$menuShutdown = $("#menu-shutdown");
@@ -269,6 +338,8 @@ class Dashboard {
     this.$modalCloseRemove = $(".modal-close-remove");
     this.$editMemoryModal = $("#edit-memory-modal");
     this.$editMemoryName = $("#edit-memory-name");
+    this.$editMemoryRenameBtn = $("#edit-memory-rename-btn");
+    this.$editMemoryRenameInput = $("#edit-memory-rename-input");
     this.$editMemoryContent = $("#edit-memory-content");
     this.$editMemorySaveBtn = $("#edit-memory-save-btn");
     this.$editMemoryCancelBtn = $("#edit-memory-cancel-btn");
@@ -306,7 +377,9 @@ class Dashboard {
     this.outputChart = null;
 
     // Register event handlers
+    this.$saveLogsBtn.click(this.saveLogs.bind(this));
     this.$copyLogsBtn.click(this.copyLogs.bind(this));
+    this.$clearLogsBtn.click(this.clearLogs.bind(this));
     this.$menuShutdown.click(function (e) {
       e.preventDefault();
       self.shutdown();
@@ -325,6 +398,21 @@ class Dashboard {
     this.$editMemoryCancelBtn.click(this.closeEditMemoryModal.bind(this));
     this.$modalCloseEditMemory.click(this.closeEditMemoryModal.bind(this));
     this.$editMemoryContent.on("input", this.trackMemoryChanges.bind(this));
+    this.$editMemoryRenameBtn.click(this.startMemoryRename.bind(this));
+    this.$editMemoryRenameInput.keydown(function (e) {
+      if (e.which === 13) {
+        // Enter key
+        e.preventDefault();
+        self.commitMemoryRename();
+      } else if (e.which === 27) {
+        // Escape key
+        e.preventDefault();
+        self.cancelMemoryRename();
+      }
+    });
+    this.$editMemoryRenameInput.on("blur", function () {
+      self.cancelMemoryRename();
+    });
     this.$deleteMemoryOkBtn.click(this.confirmDeleteMemoryOk.bind(this));
     this.$deleteMemoryCancelBtn.click(this.closeDeleteMemoryModal.bind(this));
     this.$modalCloseDeleteMemory.click(this.closeDeleteMemoryModal.bind(this));
@@ -441,35 +529,9 @@ class Dashboard {
 
     // Initialize the application
     this.loadToolNames().then(function () {
-      // Start on overview page
       self.loadNews();
-      self.loadConfigOverview();
-      self.startConfigPolling();
-      self.startExecutionsPolling();
-    });
-    // Initialize heartbeat interval
-    setInterval(this.heartbeat.bind(this), 250);
-  }
-
-  heartbeat() {
-    let self = this;
-    $.ajax({
-      url: "/heartbeat",
-      type: "GET",
-      success: function (response) {
-        self.heartbeatFailureCount = 0;
-      },
-      error: function (xhr, status, error) {
-        self.heartbeatFailureCount++;
-        console.error(
-          "Heartbeat failure; count = ",
-          self.heartbeatFailureCount,
-        );
-        if (self.heartbeatFailureCount >= 1) {
-          console.log("Server appears to be down, closing tab");
-          window.close();
-        }
-      },
+      // start on overview page
+      self.navigateToPage("overview");
     });
   }
 
@@ -500,7 +562,6 @@ class Dashboard {
     // Start appropriate polling for the page
     if (page === "overview") {
       this.loadNews();
-      this.loadConfigOverview();
       this.startConfigPolling();
       this.startExecutionsPolling();
     } else if (page === "logs") {
@@ -589,6 +650,7 @@ class Dashboard {
   }
 
   startConfigPolling() {
+    this.loadConfigOverview();
     this.configPollInterval = setInterval(
       this.loadConfigOverview.bind(this),
       1000,
@@ -596,13 +658,13 @@ class Dashboard {
   }
 
   startExecutionsPolling() {
+    this.loadExecutions();
     // Poll every 1 second for executions (independent of config polling)
     // This ensures stuck executions can still be cancelled even if config polling is blocked
-    this.loadExecutions();
-    this.executionsPollInterval = setInterval(() => {
-      this.loadQueuedExecutions();
-      this.loadLastExecution();
-    }, 1000);
+    this.executionsPollInterval = setInterval(
+      this.loadExecutions.bind(this),
+      1000,
+    );
   }
 
   displayConfig(config) {
@@ -614,6 +676,11 @@ class Dashboard {
       const wasMemoriesExpanded = $existingMemoriesContent.is(":visible");
 
       let html = '<div class="config-grid">';
+
+      html +=
+        '<div class="config-label">Version:</div><div class="config-value">' +
+        config.serena_version +
+        "</div>";
 
       // Project info
       html += '<div class="config-label">Active Project:</div>';
@@ -702,13 +769,6 @@ class Dashboard {
       html += '<div class="config-label">File Encoding:</div>';
       html +=
         '<div class="config-value">' + (config.encoding || "N/A") + "</div>";
-
-      // Current Client info
-      html += '<div class="config-label">Current Client:</div>';
-      html +=
-        '<div class="config-value">' +
-        (config.current_client || "None") +
-        "</div>";
 
       html += "</div>";
 
@@ -990,7 +1050,7 @@ class Dashboard {
 
   // ===== Executions Methods =====
 
-  loadQueuedExecutions() {
+  loadQueuedExecutions(onComplete) {
     let self = this;
     $.ajax({
       url: "/queued_task_executions",
@@ -1008,10 +1068,11 @@ class Dashboard {
           '<div class="error-message">Error loading executions</div>',
         );
       },
+      complete: onComplete,
     });
   }
 
-  loadLastExecution() {
+  loadLastExecution(onComplete) {
     let self = this;
     $.ajax({
       url: "/last_execution",
@@ -1034,10 +1095,12 @@ class Dashboard {
           '<div class="error-message">Error loading last execution</div>',
         );
       },
+      complete: onComplete,
     });
   }
 
   loadExecutions() {
+    const self = this;
     if (this.waitingForExecutionsPollingResult) {
       console.log(
         "Still waiting for previous executions poll result, skipping this poll",
@@ -1045,8 +1108,11 @@ class Dashboard {
     } else {
       this.waitingForExecutionsPollingResult = true;
       console.log("Polling for executions...");
-      this.loadQueuedExecutions();
-      this.loadLastExecution();
+      this.loadQueuedExecutions(function () {
+        self.loadLastExecution(function () {
+          self.waitingForExecutionsPollingResult = false;
+        });
+      });
     }
   }
 
@@ -1366,13 +1432,39 @@ class Dashboard {
       : "Serena Dashboard";
   }
 
+  updateLogButtons(hasLogs) {
+    this.$saveLogsBtn.prop("disabled", !hasLogs);
+    this.$copyLogsBtn.prop("disabled", !hasLogs);
+    this.$clearLogsBtn.prop("disabled", !hasLogs);
+  }
+
+  saveLogs() {
+    const logText = this.$logContainer.text();
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+    const blob = new Blob([logText], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `serena-logs-${timestamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    const originalHtml = this.$saveLogsBtn.html();
+    const checkmarkSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span class="log-action-btn-text">save logs</span>';
+    this.$saveLogsBtn.html(checkmarkSvg);
+    setTimeout(() => {
+      this.$saveLogsBtn.html(originalHtml);
+    }, 1500);
+  }
+
   copyLogs() {
     const logText = this.$logContainer.text();
-
-    if (!logText) {
-      alert("No logs to copy");
-      return;
-    }
 
     // Use the Clipboard API to copy text
     navigator.clipboard
@@ -1381,7 +1473,7 @@ class Dashboard {
         // Visual feedback - temporarily change icon to grey checkmark
         const originalHtml = this.$copyLogsBtn.html();
         const checkmarkSvg =
-          '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span class="copy-logs-text">copy logs</span>';
+          '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span class="log-action-btn-text">copy logs</span>';
         this.$copyLogsBtn.html(checkmarkSvg);
 
         setTimeout(() => {
@@ -1390,8 +1482,31 @@ class Dashboard {
       })
       .catch((err) => {
         console.error("Failed to copy logs:", err);
-        alert("Failed to copy logs to clipboard");
       });
+  }
+
+  clearLogs() {
+    let self = this;
+    $.ajax({
+      url: "/clear_logs",
+      type: "POST",
+      success: function () {
+        self.$logContainer.empty();
+        self.currentMaxIdx = -1;
+        self.updateLogButtons(false);
+
+        const originalHtml = self.$clearLogsBtn.html();
+        const checkmarkSvg =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span class="log-action-btn-text">clear logs</span>';
+        self.$clearLogsBtn.html(checkmarkSvg);
+        setTimeout(() => {
+          self.$clearLogsBtn.html(originalHtml);
+        }, 1500);
+      },
+      error: function (xhr, status, error) {
+        console.error("Failed to clear logs:", error);
+      },
+    });
   }
 
   loadLogs() {
@@ -1430,6 +1545,9 @@ class Dashboard {
           );
         }
 
+        self.updateLogButtons(
+          response.messages && response.messages.length > 0,
+        );
         self.updateTitle(response.active_project);
 
         // Start periodic polling for new logs
@@ -1476,6 +1594,8 @@ class Dashboard {
 
           // Update max_idx
           self.currentMaxIdx = response.max_idx || self.currentMaxIdx;
+
+          self.updateLogButtons(true);
 
           // Auto-scroll to bottom if user was already at bottom
           if (wasAtBottom) {
@@ -2205,6 +2325,78 @@ class Dashboard {
     });
   }
 
+  startMemoryRename() {
+    this.$editMemoryName.hide();
+    this.$editMemoryRenameBtn.hide();
+    this.$editMemoryRenameInput
+      .val(this.currentMemoryName)
+      .show()
+      .focus()
+      .select();
+  }
+
+  cancelMemoryRename() {
+    this.$editMemoryRenameInput.hide();
+    this.$editMemoryName.show();
+    this.$editMemoryRenameBtn.show();
+  }
+
+  commitMemoryRename() {
+    const newName = this.$editMemoryRenameInput.val().trim();
+    const oldName = this.currentMemoryName;
+
+    // If name unchanged, just cancel
+    if (!newName || newName === oldName) {
+      this.cancelMemoryRename();
+      return;
+    }
+
+    // Validate memory name (alphanumeric, underscores, and slashes for subdirectories)
+    if (!/^[a-zA-Z0-9_]+(?:\/[a-zA-Z0-9_]+)*$/.test(newName)) {
+      alert(
+        'Memory name can only contain letters, numbers, underscores, and "/" for subdirectories (e.g., "topic/memory_name")',
+      );
+      this.$editMemoryRenameInput.focus();
+      return;
+    }
+
+    const self = this;
+    this.$editMemoryRenameInput.prop("disabled", true);
+
+    $.ajax({
+      url: "/rename_memory",
+      type: "POST",
+      contentType: "application/json",
+      data: JSON.stringify({
+        old_name: oldName,
+        new_name: newName,
+      }),
+      success: function (response) {
+        if (response.status === "success") {
+          self.currentMemoryName = newName;
+          self.$editMemoryName.text(newName);
+          self.cancelMemoryRename();
+          // Reload config to reflect the rename in the memory list
+          self.loadConfigOverview();
+        } else {
+          alert("Error: " + response.message);
+          self.$editMemoryRenameInput.focus();
+        }
+      },
+      error: function (xhr, status, error) {
+        console.error("Error renaming memory:", error);
+        alert(
+          "Error renaming memory: " +
+            (xhr.responseJSON ? xhr.responseJSON.message : error),
+        );
+        self.$editMemoryRenameInput.focus();
+      },
+      complete: function () {
+        self.$editMemoryRenameInput.prop("disabled", false);
+      },
+    });
+  }
+
   confirmDeleteMemory(memoryName) {
     // Set memory name to delete
     this.memoryToDelete = memoryName;
@@ -2286,9 +2478,11 @@ class Dashboard {
       return;
     }
 
-    // Validate memory name (alphanumeric and underscores only)
-    if (!/^[a-zA-Z0-9_]+$/.test(memoryName)) {
-      alert("Memory name can only contain letters, numbers, and underscores");
+    // Validate memory name (alphanumeric, underscores, and slashes for subdirectories)
+    if (!/^[a-zA-Z0-9_]+(?:\/[a-zA-Z0-9_]+)*$/.test(memoryName)) {
+      alert(
+        'Memory name can only contain letters, numbers, underscores, and "/" for subdirectories (e.g., "topic/memory_name")',
+      );
       return;
     }
 
@@ -2337,30 +2531,35 @@ class Dashboard {
     let self = this;
     console.log("Loading news...");
     $.ajax({
-      url: "/news_snippet_ids",
+      url: "/fetch_unread_news",
       type: "GET",
       success: function (response) {
-        console.log("News snippet IDs response:", response);
+        console.log("Unread news response:", response);
         if (
           response.status === "success" &&
-          response.news_snippet_ids &&
-          response.news_snippet_ids.length > 0
+          response.news &&
+          Object.keys(response.news).length > 0
         ) {
-          console.log("Displaying news with IDs:", response.news_snippet_ids);
-          self.displayNews(response.news_snippet_ids);
+          const newsIds = Object.keys(response.news);
+          self.displayNews(newsIds, response.news);
         } else {
           console.log("No unread news, hiding section");
           self.$newsSection.hide();
         }
       },
       error: function (xhr, status, error) {
-        console.error("Error loading news snippet IDs:", error);
+        console.error("Error loading news:", error);
         self.$newsSection.hide();
       },
     });
   }
 
-  displayNews(newsIds) {
+  /**
+   * Display news items given unread IDs and the full news data mapping.
+   * @param {number[]} newsIds - array of unread news IDs
+   * @param {Object} newsData - mapping of news ID strings to HTML content
+   */
+  displayNews(newsIds, newsData) {
     let self = this;
     console.log("displayNews called with:", newsIds);
     // Sort newest first (descending order)
@@ -2374,45 +2573,37 @@ class Dashboard {
     self.$newsSection.show();
     self.$newsDisplay.empty();
     console.log("Displaying " + newsIds.length + " news items.");
-    // Load each news snippet HTML
-    let loadedCount = 0;
+
     newsIds.forEach(function (newsId) {
-      $.ajax({
-        url: "/dashboard/news/" + newsId + ".html",
-        type: "GET",
-        success: function (html) {
-          // Wrap the HTML in a container with a button
-          let $newsContainer = $('<div class="news-container">').attr(
-            "data-news-id",
-            newsId,
-          );
-          let $newsContent = $(html);
+      const html = newsData[String(newsId)];
+      if (!html) {
+        console.warn("No news content found for ID " + newsId);
+        return;
+      }
+      // Wrap the HTML in a container with a button
+      let $newsContainer = $('<div class="news-container">').attr(
+        "data-news-id",
+        newsId,
+      );
+      let $newsContent = $(html);
 
-          // Add button for marking as read
-          let $markRead = $('<div class="news-mark-read">');
-          let $button = $('<button class="news-mark-read-btn">')
-            .attr("data-news-id", newsId)
-            .text("Mark as read");
+      // Add button for marking as read
+      let $markRead = $('<div class="news-mark-read">');
+      let $button = $('<button class="news-mark-read-btn">')
+        .attr("data-news-id", newsId)
+        .text("Mark as read");
 
-          $markRead.append($button);
-          $newsContent.append($markRead);
+      $markRead.append($button);
+      $newsContent.append($markRead);
 
-          $newsContainer.append($newsContent);
-          self.$newsDisplay.append($newsContainer);
+      $newsContainer.append($newsContent);
+      self.$newsDisplay.append($newsContainer);
 
-          // Bind button click event
-          $button.on("click", function () {
-            const btn = $(this);
-            btn.prop("disabled", true).text("Marking...");
-            self.markNewsAsRead(newsId);
-          });
-
-          loadedCount++;
-        },
-        error: function (xhr, status, error) {
-          console.error("Error loading news snippet " + newsId + ":", error);
-          loadedCount++;
-        },
+      // Bind button click event
+      $button.on("click", function () {
+        const btn = $(this);
+        btn.prop("disabled", true).text("Marking...");
+        self.markNewsAsRead(newsId);
       });
     });
   }

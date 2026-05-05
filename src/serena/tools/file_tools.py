@@ -7,22 +7,20 @@ File and file system-related tools, specifically for
 """
 
 import os
-import re
 from collections import defaultdict
-from collections.abc import Callable
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Literal
 
-from serena.text_utils import search_files
 from serena.tools import (
     SUCCESS_RESULT,
     EditedFileContext,
+    EditingToolWithDiagnostics,
     Tool,
-    ToolMarkerCanEdit,
     ToolMarkerOptional,
 )
 from serena.util.file_system import scan_directory
+from serena.util.text_utils import ContentReplacer, search_files
 
 
 class ReadFileTool(Tool):
@@ -30,7 +28,13 @@ class ReadFileTool(Tool):
     Reads a file within the project directory.
     """
 
-    def apply(self, relative_path: str, start_line: int = 0, end_line: int | None = None, max_answer_chars: int = -1) -> str:
+    def apply(
+        self,
+        relative_path: str,
+        start_line: int = 0,
+        end_line: int | None = None,
+        max_answer_chars: int = -1,
+    ) -> str:
         """
         Reads the given file or a chunk of it. Generally, symbolic operations
         like find_symbol or find_referencing_symbols should be preferred if you know which symbols you are looking for.
@@ -56,7 +60,7 @@ class ReadFileTool(Tool):
         return self._limit_length(result, max_answer_chars)
 
 
-class CreateTextFileTool(Tool, ToolMarkerCanEdit):
+class CreateTextFileTool(EditingToolWithDiagnostics):
     """
     Creates/overwrites a file in the project directory.
     """
@@ -69,23 +73,33 @@ class CreateTextFileTool(Tool, ToolMarkerCanEdit):
         :param content: the (appropriately encoded) content to write to the file
         :return: a message indicating success or failure
         """
-        project_root = self.get_project_root()
-        abs_path = (Path(project_root) / relative_path).resolve()
-        will_overwrite_existing = abs_path.exists()
+        with self.DiagnosticsContext(self, relative_path) as diagnostics_context:
+            # validating the destination path
+            project_root = self.get_project_root()
+            abs_path = (Path(project_root) / relative_path).resolve()
+            will_overwrite_existing = abs_path.exists()
 
-        if will_overwrite_existing:
-            self.project.validate_relative_path(relative_path, require_not_ignored=True)
-        else:
-            assert abs_path.is_relative_to(
-                self.get_project_root()
-            ), f"Cannot create file outside of the project directory, got {relative_path=}"
+            if will_overwrite_existing:
+                self.project.validate_relative_path(
+                    relative_path, require_not_ignored=True
+                )
+            else:
+                assert abs_path.is_relative_to(
+                    self.get_project_root()
+                ), f"Cannot create file outside of the project directory, got {relative_path=}"
 
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
-        abs_path.write_text(content, encoding=self.project.project_config.encoding)
-        answer = f"File created: {relative_path}."
-        if will_overwrite_existing:
-            answer += " Overwrote existing file."
-        return answer
+            # writing the file
+            abs_path.parent.mkdir(parents=True, exist_ok=True)
+            abs_path.write_text(
+                content,
+                encoding=self.project.project_config.encoding,
+                newline=self.project.line_ending.newline_str,
+            )
+            answer = f"File created: {relative_path}."
+            if will_overwrite_existing:
+                answer += " Overwrote existing file."
+
+            return diagnostics_context.format_result(answer)
 
 
 class ListDirTool(Tool):
@@ -93,7 +107,13 @@ class ListDirTool(Tool):
     Lists files and directories in the given directory (optionally with recursion).
     """
 
-    def apply(self, relative_path: str, recursive: bool, skip_ignored_files: bool = False, max_answer_chars: int = -1) -> str:
+    def apply(
+        self,
+        relative_path: str,
+        recursive: bool,
+        skip_ignored_files: bool = False,
+        max_answer_chars: int = -1,
+    ) -> str:
         """
         Lists files and directories in the given directory (optionally with recursion).
 
@@ -114,14 +134,18 @@ class ListDirTool(Tool):
             }
             return self._to_json(error_info)
 
-        self.project.validate_relative_path(relative_path, require_not_ignored=skip_ignored_files)
+        self.project.validate_relative_path(
+            relative_path, require_not_ignored=skip_ignored_files
+        )
 
         dirs, files = scan_directory(
             os.path.join(self.get_project_root(), relative_path),
             relative_to=self.get_project_root(),
             recursive=recursive,
             is_ignored_dir=self.project.is_ignored_path if skip_ignored_files else None,
-            is_ignored_file=self.project.is_ignored_path if skip_ignored_files else None,
+            is_ignored_file=(
+                self.project.is_ignored_path if skip_ignored_files else None
+            ),
         )
 
         result = self._to_json({"dirs": dirs, "files": files})
@@ -164,7 +188,7 @@ class FindFileTool(Tool):
         return result
 
 
-class ReplaceContentTool(Tool, ToolMarkerCanEdit):
+class ReplaceContentTool(EditingToolWithDiagnostics):
     """
     Replaces content in a file (optionally using regular expressions).
     """
@@ -200,54 +224,17 @@ class ReplaceContentTool(Tool, ToolMarkerCanEdit):
             If mode is "regex", the string can contain backreferences to matched groups in the needle regex,
             specified using the syntax $!1, $!2, etc. for groups 1, 2, etc.
         :param mode: either "literal" or "regex", specifying how the `needle` parameter is to be interpreted.
-        :param allow_multiple_occurrences: if True, the regex may match multiple occurrences in the file
-            and all of them will be replaced.
-            If this is set to False and the regex matches multiple occurrences, an error will be returned
-            (and you may retry with a revised, more specific regex).
+        :param allow_multiple_occurrences: whether to allow matching and replacing multiple occurrences.
+            If false and multiple occurrences are found, an error will be returned
         """
         return self.replace_content(
-            relative_path, needle, repl, mode=mode, allow_multiple_occurrences=allow_multiple_occurrences, require_not_ignored=True
+            relative_path,
+            needle,
+            repl,
+            mode=mode,
+            allow_multiple_occurrences=allow_multiple_occurrences,
+            require_not_ignored=True,
         )
-
-    @staticmethod
-    def _create_replacement_function(regex_pattern: str, repl_template: str, regex_flags: int) -> Callable[[re.Match], str]:
-        """
-        Creates a replacement function that validates for ambiguity and handles backreferences.
-
-        :param regex_pattern: The regex pattern being used for matching
-        :param repl_template: The replacement template with $!1, $!2, etc. for backreferences
-        :param regex_flags: The flags to use when searching (e.g., re.DOTALL | re.MULTILINE)
-        :return: A function suitable for use with re.sub() or re.subn()
-        """
-
-        def validate_and_replace(match: re.Match) -> str:
-            matched_text = match.group(0)
-
-            # For multi-line match, check if the same pattern matches again within the already-matched text,
-            # rendering the match ambiguous. Typical pattern in the code:
-            #    <start><other-stuff><start><stuff><end>
-            # When matching
-            #    <start>.*?<end>
-            # this will match the entire span above, while only the suffix may have been intended.
-            # (See test case for a practical example.)
-            # To detect this, we check if the same pattern matches again within the matched text,
-            if "\n" in matched_text and re.search(regex_pattern, matched_text[1:], flags=regex_flags):
-                raise ValueError(
-                    "Match is ambiguous: the search pattern matches multiple overlapping occurrences. "
-                    "Please revise the search pattern to be more specific to avoid ambiguity, "
-                    "e.g. by matching specific context after the match, or try using the literal mode."
-                )
-
-            # Handle backreferences: replace $!1, $!2, etc. with actual matched groups
-            def expand_backreference(m: re.Match) -> str:
-                group_num = int(m.group(1))
-                group_value = match.group(group_num)
-                return group_value if group_value is not None else m.group(0)
-
-            result = re.sub(r"\$!(\d+)", expand_backreference, repl_template)
-            return result
-
-        return validate_and_replace
 
     def replace_content(
         self,
@@ -262,38 +249,21 @@ class ReplaceContentTool(Tool, ToolMarkerCanEdit):
         Performs the replacement, with additional options not exposed in the tool.
         This function can be used internally by other tools.
         """
-        self.project.validate_relative_path(relative_path, require_not_ignored=require_not_ignored)
-        with EditedFileContext(relative_path, self.create_code_editor()) as context:
-            original_content = context.get_original_content()
-
-            if mode == "literal":
-                regex = re.escape(needle)
-            elif mode == "regex":
-                regex = needle
-            else:
-                raise ValueError(f"Invalid mode: '{mode}', expected 'literal' or 'regex'.")
-
-            regex_flags = re.DOTALL | re.MULTILINE
-
-            # create replacement function with validation and backreference handling
-            repl_fn = self._create_replacement_function(regex, repl, regex_flags=regex_flags)
-
-            # perform replacement
-            updated_content, n = re.subn(regex, repl_fn, original_content, flags=regex_flags)
-
-            if n == 0:
-                raise ValueError(f"Error: No matches of search expression found in file '{relative_path}'.")
-            if not allow_multiple_occurrences and n > 1:
-                raise ValueError(
-                    f"Expression matches {n} occurrences in file '{relative_path}'. "
-                    "Please revise the expression to be more specific or enable allow_multiple_occurrences if this is expected."
+        with self.DiagnosticsContext(self, relative_path) as diagnostics_context:
+            self.project.validate_relative_path(
+                relative_path, require_not_ignored=require_not_ignored
+            )
+            with EditedFileContext(relative_path, self.create_code_editor()) as context:
+                original_content = context.get_original_content()
+                replacer = ContentReplacer(
+                    mode=mode, allow_multiple_occurrences=allow_multiple_occurrences
                 )
-            context.set_updated_content(updated_content)
+                updated_content = replacer.replace(original_content, needle, repl)
+                context.set_updated_content(updated_content)
+            return diagnostics_context.format_result(SUCCESS_RESULT)
 
-        return SUCCESS_RESULT
 
-
-class DeleteLinesTool(Tool, ToolMarkerCanEdit, ToolMarkerOptional):
+class DeleteLinesTool(EditingToolWithDiagnostics, ToolMarkerOptional):
     """
     Deletes a range of lines within a file.
     """
@@ -313,12 +283,13 @@ class DeleteLinesTool(Tool, ToolMarkerCanEdit, ToolMarkerOptional):
         :param start_line: the 0-based index of the first line to be deleted
         :param end_line: the 0-based index of the last line to be deleted
         """
-        code_editor = self.create_code_editor()
-        code_editor.delete_lines(relative_path, start_line, end_line)
-        return SUCCESS_RESULT
+        with self.DiagnosticsContext(self, relative_path) as diagnostics_context:
+            code_editor = self.create_code_editor()
+            code_editor.delete_lines(relative_path, start_line, end_line)
+            return diagnostics_context.format_result(SUCCESS_RESULT)
 
 
-class ReplaceLinesTool(Tool, ToolMarkerCanEdit, ToolMarkerOptional):
+class ReplaceLinesTool(EditingToolWithDiagnostics, ToolMarkerOptional):
     """
     Replaces a range of lines within a file with new content.
     """
@@ -340,16 +311,19 @@ class ReplaceLinesTool(Tool, ToolMarkerCanEdit, ToolMarkerOptional):
         :param end_line: the 0-based index of the last line to be deleted
         :param content: the content to insert
         """
+        # normalizing the replacement content
         if not content.endswith("\n"):
             content += "\n"
-        result = self.agent.get_tool(DeleteLinesTool).apply(relative_path, start_line, end_line)
-        if result != SUCCESS_RESULT:
-            return result
-        self.agent.get_tool(InsertAtLineTool).apply(relative_path, start_line, content)
-        return SUCCESS_RESULT
+
+        with self.DiagnosticsContext(self, relative_path) as diagnostics_context:
+            code_editor = self.create_code_editor()
+            code_editor.delete_lines(relative_path, start_line, end_line)
+            code_editor.insert_at_line(relative_path, start_line, content)
+
+            return diagnostics_context.format_result(SUCCESS_RESULT)
 
 
-class InsertAtLineTool(Tool, ToolMarkerCanEdit, ToolMarkerOptional):
+class InsertAtLineTool(EditingToolWithDiagnostics, ToolMarkerOptional):
     """
     Inserts content at a given line in a file.
     """
@@ -370,11 +344,15 @@ class InsertAtLineTool(Tool, ToolMarkerCanEdit, ToolMarkerOptional):
         :param line: the 0-based index of the line to insert content at
         :param content: the content to be inserted
         """
+        # normalizing the inserted content
         if not content.endswith("\n"):
             content += "\n"
-        code_editor = self.create_code_editor()
-        code_editor.insert_at_line(relative_path, line, content)
-        return SUCCESS_RESULT
+
+        with self.DiagnosticsContext(self, relative_path) as diagnostics_context:
+            code_editor = self.create_code_editor()
+            code_editor.insert_at_line(relative_path, line, content)
+
+            return diagnostics_context.format_result(SUCCESS_RESULT)
 
 
 class SearchForPatternTool(Tool):
@@ -419,7 +397,6 @@ class SearchForPatternTool(Tool):
             is used to further restrict the search).
             Smartly combining the various restrictions allows you to perform very targeted searches.
 
-
         :param substring_pattern: Regular expression for a substring pattern to search for
         :param context_lines_before: Number of lines of context to include before each match
         :param context_lines_after: Number of lines of context to include after each match
@@ -445,7 +422,7 @@ class SearchForPatternTool(Tool):
             For example, for finding classes or methods from a name pattern.
             Setting to False is a better choice if you also want to search in non-code files, like in html or yaml files,
             which is why it is the default.
-        :return: A mapping of file paths to lists of matched consecutive lines.
+        :return: A mapping from file paths to matched consecutive lines (0-based line numbers).
         """
         abs_path = os.path.join(self.get_project_root(), relative_path)
         if not os.path.exists(abs_path):
@@ -476,15 +453,47 @@ class SearchForPatternTool(Tool):
             matches = search_files(
                 rel_paths_to_search,
                 substring_pattern,
+                context_lines_before=context_lines_before,
+                context_lines_after=context_lines_after,
                 file_reader=self.project.read_file,
                 root_path=self.get_project_root(),
                 paths_include_glob=paths_include_glob,
                 paths_exclude_glob=paths_exclude_glob,
             )
+
         # group matches by file
         file_to_matches: dict[str, list[str]] = defaultdict(list)
         for match in matches:
             assert match.source_file_path is not None
             file_to_matches[match.source_file_path].append(match.to_display_string())
+
+        # capture lightweight match data for shortening before serialization
+        match_lines_by_file: dict[str, list[int]] = defaultdict(list)
+        for match in matches:
+            assert match.source_file_path is not None
+            match_lines_by_file[match.source_file_path].append(
+                match.matched_lines[0].line_number
+            )
+
+        # shortened result closures, from least to most aggressive shortening
+        def make_lines_only() -> str:
+            """Match locations without surrounding context"""
+            return f"Match lines per file:\n{self._to_json(match_lines_by_file)}"
+
+        def make_per_file_counts() -> str:
+            counts = {path: len(lines) for path, lines in match_lines_by_file.items()}
+            return f"Match counts per file:\n{self._to_json(counts)}"
+
+        def make_summary() -> str:
+            return f"Found {len(matches)} matches in {len(match_lines_by_file)} files."
+
         result = self._to_json(file_to_matches)
-        return self._limit_length(result, max_answer_chars)
+        return self._limit_length(
+            result,
+            max_answer_chars,
+            shortened_result_factories=[
+                make_lines_only,
+                make_per_file_counts,
+                make_summary,
+            ],
+        )

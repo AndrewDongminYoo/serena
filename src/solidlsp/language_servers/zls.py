@@ -8,7 +8,6 @@ import pathlib
 import platform
 import shutil
 import subprocess
-import threading
 
 from overrides import override
 
@@ -33,13 +32,22 @@ class ZigLanguageServer(SolidLanguageServer):
         # - zig-out: default build output directory
         # - .zig-cache: alternative cache location
         # - node_modules: if the project has JavaScript components
-        return super().is_ignored_dirname(dirname) or dirname in ["zig-cache", "zig-out", ".zig-cache", "node_modules", "build", "dist"]
+        return super().is_ignored_dirname(dirname) or dirname in [
+            "zig-cache",
+            "zig-out",
+            ".zig-cache",
+            "node_modules",
+            "build",
+            "dist",
+        ]
 
     @staticmethod
     def _get_zig_version() -> str | None:
         """Get the installed Zig version or None if not found."""
         try:
-            result = subprocess.run(["zig", "version"], capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                ["zig", "version"], capture_output=True, text=True, check=False
+            )
             if result.returncode == 0:
                 return result.stdout.strip()
         except FileNotFoundError:
@@ -50,7 +58,9 @@ class ZigLanguageServer(SolidLanguageServer):
     def _get_zls_version() -> str | None:
         """Get the installed ZLS version or None if not found."""
         try:
-            result = subprocess.run(["zls", "--version"], capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                ["zls", "--version"], capture_output=True, text=True, check=False
+            )
             if result.returncode == 0:
                 return result.stdout.strip()
         except FileNotFoundError:
@@ -71,8 +81,7 @@ class ZigLanguageServer(SolidLanguageServer):
         # Check for Windows and provide error message
         if platform.system() == "Windows":
             raise RuntimeError(
-                "Windows is not supported by ZLS in this integration. "
-                "Cross-file references don't work reliably on Windows. Reason unknown."
+                "Windows is not supported by ZLS in this integration. Cross-file references don't work reliably on Windows. Reason unknown."
             )
 
         zig_version = ZigLanguageServer._get_zig_version()
@@ -96,11 +105,21 @@ class ZigLanguageServer(SolidLanguageServer):
 
         return True
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         self._setup_runtime_dependency()
 
-        super().__init__(config, repository_root_path, ProcessLaunchInfo(cmd="zls", cwd=repository_root_path), "zig", solidlsp_settings)
-        self.server_ready = threading.Event()
+        super().__init__(
+            config,
+            repository_root_path,
+            ProcessLaunchInfo(cmd="zls", cwd=repository_root_path),
+            "zig",
+            solidlsp_settings,
+        )
         self.request_id = 0
 
     @staticmethod
@@ -135,6 +154,7 @@ class ZigLanguageServer(SolidLanguageServer):
                         "dynamicRegistration": True,
                         "contentFormat": ["markdown", "plaintext"],
                     },
+                    "publishDiagnostics": {"relatedInformation": True},
                 },
                 "workspace": {
                     "workspaceFolders": True,
@@ -203,7 +223,9 @@ class ZigLanguageServer(SolidLanguageServer):
         self.server.start()
         initialize_params = self._get_initialize_params(self.repository_root_path)
 
-        log.info("Sending initialize request from LSP client to LSP server and awaiting response")
+        log.info(
+            "Sending initialize request from LSP client to LSP server and awaiting response"
+        )
         init_response = self.server.send.initialize(initialize_params)
 
         # Verify server capabilities
@@ -213,11 +235,9 @@ class ZigLanguageServer(SolidLanguageServer):
         assert "referencesProvider" in init_response["capabilities"]
 
         self.server.notify.initialized({})
-        self.completions_available.set()
 
         # ZLS server is ready after initialization
-        self.server_ready.set()
-        self.server_ready.wait()
+        # (no need to wait for an event)
 
         # Open build.zig if it exists to help ZLS understand project structure
         build_zig_path = os.path.join(self.repository_root_path, "build.zig")

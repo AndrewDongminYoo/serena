@@ -1,13 +1,15 @@
+import hashlib
+import json
 import logging
 import os
 import pathlib
 import subprocess
-import threading
+from collections.abc import Hashable
 from typing import Any, cast
 
 from overrides import override
 
-from solidlsp.ls import SolidLanguageServer
+from solidlsp.ls import RawDocumentSymbol, SolidLanguageServer
 from solidlsp.ls_config import LanguageServerConfig
 from solidlsp.lsp_protocol_handler.lsp_types import InitializeParams
 from solidlsp.lsp_protocol_handler.server import ProcessLaunchInfo
@@ -21,13 +23,22 @@ class Gopls(SolidLanguageServer):
     Provides Go specific instantiation of the LanguageServer class using gopls.
     """
 
+    @classmethod
+    def supports_implementation_request(cls) -> bool:
+        return True
+
     @override
     def is_ignored_dirname(self, dirname: str) -> bool:
         # For Go projects, we should ignore:
         # - vendor: third-party dependencies vendored into the project
         # - node_modules: if the project has JavaScript components
         # - dist/build: common output directories
-        return super().is_ignored_dirname(dirname) or dirname in ["vendor", "node_modules", "dist", "build"]
+        return super().is_ignored_dirname(dirname) or dirname in [
+            "vendor",
+            "node_modules",
+            "dist",
+            "build",
+        ]
 
     @staticmethod
     def _determine_log_level(line: str) -> int:
@@ -51,7 +62,9 @@ class Gopls(SolidLanguageServer):
     def _get_go_version() -> str | None:
         """Get the installed Go version or None if not found."""
         try:
-            result = subprocess.run(["go", "version"], capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                ["go", "version"], capture_output=True, text=True, check=False
+            )
             if result.returncode == 0:
                 return result.stdout.strip()
         except FileNotFoundError:
@@ -62,7 +75,9 @@ class Gopls(SolidLanguageServer):
     def _get_gopls_version() -> str | None:
         """Get the installed gopls version or None if not found."""
         try:
-            result = subprocess.run(["gopls", "version"], capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                ["gopls", "version"], capture_output=True, text=True, check=False
+            )
             if result.returncode == 0:
                 return result.stdout.strip()
         except FileNotFoundError:
@@ -91,11 +106,21 @@ class Gopls(SolidLanguageServer):
 
         return True
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         self._setup_runtime_dependency()
 
-        super().__init__(config, repository_root_path, ProcessLaunchInfo(cmd="gopls", cwd=repository_root_path), "go", solidlsp_settings)
-        self.server_ready = threading.Event()
+        super().__init__(
+            config,
+            repository_root_path,
+            ProcessLaunchInfo(cmd="gopls", cwd=repository_root_path),
+            "go",
+            solidlsp_settings,
+        )
         self.request_id = 0
 
     def _get_initialize_params(self, repository_absolute_path: str) -> InitializeParams:
@@ -115,7 +140,10 @@ class Gopls(SolidLanguageServer):
                         "symbolKind": {"valueSet": list(range(1, 27))},
                     },
                 },
-                "workspace": {"workspaceFolders": True, "didChangeConfiguration": {"dynamicRegistration": True}},
+                "workspace": {
+                    "workspaceFolders": True,
+                    "didChangeConfiguration": {"dynamicRegistration": True},
+                },
             },
             "processId": os.getpid(),
             "rootPath": repository_absolute_path,
@@ -141,7 +169,10 @@ class Gopls(SolidLanguageServer):
             self._canonical_json_or_raise(json, gopls_settings)
 
             # Log keys only (and at DEBUG) to avoid leaking sensitive values and to reduce startup noise.
-            log.debug("Applying gopls settings via initializationOptions: keys=%s", list(gopls_settings.keys()))
+            log.debug(
+                "Applying gopls settings via initializationOptions: keys=%s",
+                list(gopls_settings.keys()),
+            )
             initialize_params["initializationOptions"] = gopls_settings
 
         return cast(InitializeParams, initialize_params)
@@ -167,15 +198,13 @@ class Gopls(SolidLanguageServer):
     _CACHE_CONTEXT_ENV_KEYS = ("GOFLAGS", "GOOS", "GOARCH", "CGO_ENABLED")
 
     @override
-    def _cache_context_fingerprint(self) -> str | None:
+    def _document_symbols_cache_fingerprint(self) -> Hashable:
         """
         Compute a deterministic fingerprint of the Go build context.
 
         The fingerprint includes gopls_settings and selected env vars that affect symbol discovery.
         """
-        import hashlib
-        import json
-
+        normalize_symbol_name_version = 1
         gopls_settings_raw = self._custom_settings.settings.get("gopls_settings")
 
         gopls_settings: dict | None
@@ -183,7 +212,9 @@ class Gopls(SolidLanguageServer):
             gopls_settings = None
         else:
             # Treat an explicitly empty dict the same as not providing settings at all.
-            gopls_settings = self._validate_gopls_settings_dict(gopls_settings_raw) or None
+            gopls_settings = (
+                self._validate_gopls_settings_dict(gopls_settings_raw) or None
+            )
 
         # Only include env vars that are set to a non-empty value.
         env_subset: dict[str, str] = {}
@@ -192,17 +223,26 @@ class Gopls(SolidLanguageServer):
             if value:
                 env_subset[key] = value
 
-        # Return None only when BOTH settings and env subset are effectively empty.
+        # Version processed symbols even when the build context itself is empty.
         if gopls_settings is None and not env_subset:
-            return None
+            return normalize_symbol_name_version
 
-        fingerprint_data: dict[str, object] = {"env": env_subset}
+        fingerprint_data: dict[str, object] = {
+            "env": env_subset,
+            "normalize_symbol_name_version": normalize_symbol_name_version,
+        }
         if gopls_settings is not None:
             fingerprint_data["gopls_settings"] = gopls_settings
 
         canonical_json = self._canonical_json_or_raise(json, fingerprint_data)
 
         return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()[:16]
+
+    @override
+    def _normalize_symbol_name(
+        self, symbol: RawDocumentSymbol, relative_file_path: str
+    ) -> str:
+        return symbol["name"].rsplit(".", 1)[-1]
 
     def _start_server(self) -> None:
         """Start gopls server process"""
@@ -225,7 +265,9 @@ class Gopls(SolidLanguageServer):
         self.server.start()
         initialize_params = self._get_initialize_params(self.repository_root_path)
 
-        log.info("Sending initialize request from LSP client to LSP server and awaiting response")
+        log.info(
+            "Sending initialize request from LSP client to LSP server and awaiting response"
+        )
         init_response = self.server.send.initialize(initialize_params)
 
         # Verify server capabilities
@@ -234,8 +276,6 @@ class Gopls(SolidLanguageServer):
         assert "definitionProvider" in init_response["capabilities"]
 
         self.server.notify.initialized({})
-        self.completions_available.set()
 
         # gopls server is typically ready immediately after initialization
-        self.server_ready.set()
-        self.server_ready.wait()
+        # (no need to wait for events)

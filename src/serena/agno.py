@@ -105,7 +105,9 @@ class SerenaAgnoAgentProvider:
 
             with LogTime("Loading Serena agent"):
                 try:
-                    serena_agent = SerenaAgent(project_file, context=SerenaAgentContext.load("agent"))
+                    serena_agent = SerenaAgent(
+                        project_file, context=SerenaAgentContext.load("agent")
+                    )
                 except Exception as e:
                     show_fatal_exception_safe(e)
                     raise

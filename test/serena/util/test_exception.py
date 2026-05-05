@@ -18,10 +18,15 @@ class TestHeadlessEnvironmentDetection:
     def test_is_headless_ssh_connection(self):
         """Test that SSH sessions are detected as headless."""
         with patch("sys.platform", "linux"):
-            with patch.dict(os.environ, {"SSH_CONNECTION": "192.168.1.1 22 192.168.1.2 22", "DISPLAY": ":0"}):
+            with patch.dict(
+                os.environ,
+                {"SSH_CONNECTION": "192.168.1.1 22 192.168.1.2 22", "DISPLAY": ":0"},
+            ):
                 assert is_headless_environment() is True
 
-            with patch.dict(os.environ, {"SSH_CLIENT": "192.168.1.1 22 22", "DISPLAY": ":0"}):
+            with patch.dict(
+                os.environ, {"SSH_CLIENT": "192.168.1.1 22 22", "DISPLAY": ":0"}
+            ):
                 assert is_headless_environment() is True
 
     def test_is_headless_wsl(self):
@@ -32,7 +37,9 @@ class TestHeadlessEnvironmentDetection:
 
         with patch("sys.platform", "linux"):
             with patch("os.uname") as mock_uname:
-                mock_uname.return_value = Mock(release="5.15.153.1-microsoft-standard-WSL2")
+                mock_uname.return_value = Mock(
+                    release="5.15.153.1-microsoft-standard-WSL2"
+                )
                 with patch.dict(os.environ, {"DISPLAY": ":0"}):
                     assert is_headless_environment() is True
 
@@ -76,7 +83,9 @@ class TestShowFatalExceptionSafe:
             mock_show_gui.assert_not_called()
 
         # Verify debug log about skipping GUI
-        mock_log.debug.assert_called_once_with("Skipping GUI error display in headless environment")
+        mock_log.debug.assert_called_once_with(
+            "Skipping GUI error display in headless environment"
+        )
 
     @patch("serena.util.exception.is_headless_environment", return_value=False)
     @patch("serena.util.exception.log")
@@ -101,14 +110,18 @@ class TestShowFatalExceptionSafe:
             show_fatal_exception_safe(test_exception)
 
         # Verify debug log about GUI failure
-        mock_log.debug.assert_called_with(f"Failed to show GUI error dialog: {gui_error}")
+        mock_log.debug.assert_called_with(
+            f"Failed to show GUI error dialog: {gui_error}"
+        )
 
     def test_show_fatal_exception_safe_prints_to_stderr(self):
         """Test that exceptions are always printed to stderr."""
         test_exception = ValueError("Test error message")
 
         with patch("sys.stderr", new_callable=MagicMock) as mock_stderr:
-            with patch("serena.util.exception.is_headless_environment", return_value=True):
+            with patch(
+                "serena.util.exception.is_headless_environment", return_value=True
+            ):
                 with patch("serena.util.exception.log"):
                     show_fatal_exception_safe(test_exception)
 

@@ -7,20 +7,29 @@ import logging
 import os
 import pathlib
 import shutil
-import threading
 from typing import Any
 
 from solidlsp.language_servers.common import (
     RuntimeDependency,
     RuntimeDependencyCollection,
+    build_npm_install_command,
 )
-from solidlsp.ls import SolidLanguageServer
+from solidlsp.ls import (
+    LanguageServerDependencyProvider,
+    LanguageServerDependencyProviderSinglePath,
+    SolidLanguageServer,
+)
 from solidlsp.ls_config import LanguageServerConfig
 from solidlsp.lsp_protocol_handler.lsp_types import InitializeParams
-from solidlsp.lsp_protocol_handler.server import ProcessLaunchInfo
 from solidlsp.settings import SolidLSPSettings
 
 log = logging.getLogger(__name__)
+
+# Version pinning convention (see eclipse_jdtls.py for the full spec):
+#   INITIAL_* — frozen forever; legacy unversioned install dir is reserved for it.
+#   DEFAULT_* — bumped on upgrades; goes into a versioned subdir.
+INITIAL_YAML_LANGUAGE_SERVER_VERSION = "1.19.2"
+DEFAULT_YAML_LANGUAGE_SERVER_VERSION = "1.19.2"
 
 
 class YamlLanguageServer(SolidLanguageServer):
@@ -37,7 +46,8 @@ class YamlLanguageServer(SolidLanguageServer):
         # Known informational messages from yaml-language-server that aren't critical errors
         if any(
             [
-                "cannot find module" in line_lower and "package.json" in line_lower,  # Schema resolution - not critical
+                "cannot find module" in line_lower
+                and "package.json" in line_lower,  # Schema resolution - not critical
                 "no parser" in line_lower,  # Parser messages - informational
             ]
         ):
@@ -45,61 +55,92 @@ class YamlLanguageServer(SolidLanguageServer):
 
         return SolidLanguageServer._determine_log_level(line)
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         """
         Creates a YamlLanguageServer instance. This class is not meant to be instantiated directly.
         Use LanguageServer.create() instead.
         """
-        yaml_lsp_executable_path = self._setup_runtime_dependencies(config, solidlsp_settings)
         super().__init__(
             config,
             repository_root_path,
-            ProcessLaunchInfo(cmd=yaml_lsp_executable_path, cwd=repository_root_path),
+            None,
             "yaml",
             solidlsp_settings,
         )
-        self.server_ready = threading.Event()
 
-    @classmethod
-    def _setup_runtime_dependencies(cls, config: LanguageServerConfig, solidlsp_settings: SolidLSPSettings) -> str:
-        """
-        Setup runtime dependencies for YAML Language Server and return the command to start the server.
-        """
-        # Verify both node and npm are installed
-        is_node_installed = shutil.which("node") is not None
-        assert is_node_installed, "node is not installed or isn't in PATH. Please install NodeJS and try again."
-        is_npm_installed = shutil.which("npm") is not None
-        assert is_npm_installed, "npm is not installed or isn't in PATH. Please install npm and try again."
+    def _create_dependency_provider(self) -> LanguageServerDependencyProvider:
+        return self.DependencyProvider(self._custom_settings, self._ls_resources_dir)
 
-        deps = RuntimeDependencyCollection(
-            [
-                RuntimeDependency(
-                    id="yaml-language-server",
-                    description="yaml-language-server package (Red Hat)",
-                    command="npm install --prefix ./ yaml-language-server@1.19.2",
-                    platform_id="any",
-                ),
-            ]
-        )
-
-        # Install yaml-language-server if not already installed
-        yaml_ls_dir = os.path.join(cls.ls_resources_dir(solidlsp_settings), "yaml-lsp")
-        yaml_executable_path = os.path.join(yaml_ls_dir, "node_modules", ".bin", "yaml-language-server")
-
-        # Handle Windows executable extension
-        if os.name == "nt":
-            yaml_executable_path += ".cmd"
-
-        if not os.path.exists(yaml_executable_path):
-            log.info(f"YAML Language Server executable not found at {yaml_executable_path}. Installing...")
-            deps.install(yaml_ls_dir)
-            log.info("YAML language server dependencies installed successfully")
-
-        if not os.path.exists(yaml_executable_path):
-            raise FileNotFoundError(
-                f"yaml-language-server executable not found at {yaml_executable_path}, something went wrong with the installation."
+    class DependencyProvider(LanguageServerDependencyProviderSinglePath):
+        def _get_or_install_core_dependency(self) -> str:
+            """
+            Setup runtime dependencies for YAML Language Server and return the command to start the server.
+            """
+            # Verify both node and npm are installed
+            is_node_installed = shutil.which("node") is not None
+            assert (
+                is_node_installed
+            ), "node is not installed or isn't in PATH. Please install NodeJS and try again."
+            is_npm_installed = shutil.which("npm") is not None
+            assert (
+                is_npm_installed
+            ), "npm is not installed or isn't in PATH. Please install npm and try again."
+            yaml_language_server_version = self._custom_settings.get(
+                "yaml_language_server_version", DEFAULT_YAML_LANGUAGE_SERVER_VERSION
             )
-        return f"{yaml_executable_path} --stdio"
+            npm_registry = self._custom_settings.get("npm_registry")
+
+            deps = RuntimeDependencyCollection(
+                [
+                    RuntimeDependency(
+                        id="yaml-language-server",
+                        description="yaml-language-server package (Red Hat)",
+                        command=build_npm_install_command(
+                            "yaml-language-server",
+                            yaml_language_server_version,
+                            npm_registry,
+                        ),
+                        platform_id="any",
+                    ),
+                ]
+            )
+
+            # legacy unversioned dir reserved for INITIAL; every other version goes into a versioned subdir
+            ls_dirname = (
+                "yaml-lsp"
+                if yaml_language_server_version == INITIAL_YAML_LANGUAGE_SERVER_VERSION
+                else f"yaml-lsp-{yaml_language_server_version}"
+            )
+            yaml_ls_dir = os.path.join(self._ls_resources_dir, ls_dirname)
+            yaml_executable_path = os.path.join(
+                yaml_ls_dir, "node_modules", ".bin", "yaml-language-server"
+            )
+
+            # Handle Windows executable extension
+            if os.name == "nt":
+                yaml_executable_path += ".cmd"
+
+            if not os.path.exists(yaml_executable_path):
+                log.info(
+                    f"YAML Language Server executable not found at {yaml_executable_path}. Installing..."
+                )
+                deps.install(yaml_ls_dir)
+                log.info("YAML language server dependencies installed successfully")
+
+            if not os.path.exists(yaml_executable_path):
+                raise FileNotFoundError(
+                    f"yaml-language-server executable not found at {yaml_executable_path}, something went wrong with the installation."
+                )
+
+            return yaml_executable_path
+
+        def _create_launch_command(self, core_path: str) -> list[str]:
+            return [core_path, "--stdio"]
 
     @staticmethod
     def _get_initialize_params(repository_absolute_path: str) -> InitializeParams:
@@ -112,7 +153,10 @@ class YamlLanguageServer(SolidLanguageServer):
             "capabilities": {
                 "textDocument": {
                     "synchronization": {"didSave": True, "dynamicRegistration": True},
-                    "completion": {"dynamicRegistration": True, "completionItem": {"snippetSupport": True}},
+                    "completion": {
+                        "dynamicRegistration": True,
+                        "completionItem": {"snippetSupport": True},
+                    },
                     "definition": {"dynamicRegistration": True},
                     "references": {"dynamicRegistration": True},
                     "documentSymbol": {
@@ -120,7 +164,10 @@ class YamlLanguageServer(SolidLanguageServer):
                         "hierarchicalDocumentSymbolSupport": True,
                         "symbolKind": {"valueSet": list(range(1, 27))},
                     },
-                    "hover": {"dynamicRegistration": True, "contentFormat": ["markdown", "plaintext"]},
+                    "hover": {
+                        "dynamicRegistration": True,
+                        "contentFormat": ["markdown", "plaintext"],
+                    },
                     "codeAction": {"dynamicRegistration": True},
                 },
                 "workspace": {
@@ -140,7 +187,10 @@ class YamlLanguageServer(SolidLanguageServer):
             ],
             "initializationOptions": {
                 "yaml": {
-                    "schemaStore": {"enable": True, "url": "https://www.schemastore.org/api/json/catalog.json"},
+                    "schemaStore": {
+                        "enable": True,
+                        "url": "https://www.schemastore.org/api/json/catalog.json",
+                    },
                     "format": {"enable": True},
                     "validate": True,
                     "hover": True,
@@ -173,7 +223,9 @@ class YamlLanguageServer(SolidLanguageServer):
         self.server.start()
         initialize_params = self._get_initialize_params(self.repository_root_path)
 
-        log.info("Sending initialize request from LSP client to LSP server and awaiting response")
+        log.info(
+            "Sending initialize request from LSP client to LSP server and awaiting response"
+        )
         init_response = self.server.send.initialize(initialize_params)
         log.debug(f"Received initialize response from YAML server: {init_response}")
 
@@ -187,5 +239,3 @@ class YamlLanguageServer(SolidLanguageServer):
 
         # YAML language server is ready immediately after initialization
         log.info("YAML server initialization complete")
-        self.server_ready.set()
-        self.completions_available.set()

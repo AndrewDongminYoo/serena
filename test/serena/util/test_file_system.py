@@ -4,7 +4,9 @@ import tempfile
 from pathlib import Path
 
 # Assuming the gitignore parser code is in a module named 'gitignore_parser'
-from serena.util.file_system import GitignoreParser, GitignoreSpec
+from pathspec import PathSpec
+
+from serena.util.file_system import GitignoreParser, GitignoreSpec, match_path
 
 
 class TestGitignoreParser:
@@ -178,6 +180,13 @@ test.log
         # Files that should NOT be ignored
         assert not parser.should_ignore("file1.txt")
         assert not parser.should_ignore("src/main.py")
+
+    def test_match_path_root_directory(self):
+        """Root directory should never be ignored by pathspec patterns."""
+        spec = PathSpec.from_lines("gitwildmatch", ["/.*/"])
+
+        assert not match_path(".", spec, root_path=str(self.repo_path))
+        assert not match_path("", spec, root_path=str(self.repo_path))
 
     def test_should_ignore_subdirectory_patterns(self):
         """Test ignoring files based on subdirectory .gitignore files."""
@@ -549,7 +558,9 @@ src/*.o
 
     def test_gitignore_spec_matches(self):
         """Test GitignoreSpec.matches method."""
-        spec = GitignoreSpec("/path/to/.gitignore", ["*.log", "build/", "!important.log"])
+        spec = GitignoreSpec(
+            "/path/to/.gitignore", ["*.log", "build/", "!important.log"]
+        )
 
         assert spec.matches("test.log")
         assert spec.matches("build/output.o")
@@ -578,13 +589,17 @@ src/*.o
         parser = GitignoreParser(str(test_dir))
 
         # foo.txt at root should NOT be ignored by foo/.gitignore
-        assert not parser.should_ignore("foo.txt"), "Root foo.txt should not be ignored by foo/.gitignore"
+        assert not parser.should_ignore(
+            "foo.txt"
+        ), "Root foo.txt should not be ignored by foo/.gitignore"
 
         # foo.txt in foo/ should be ignored
         assert parser.should_ignore("foo/foo.txt"), "foo/foo.txt should be ignored"
 
         # foo.txt in foo/bar/ should be ignored (within foo/ subtree)
-        assert parser.should_ignore("foo/bar/foo.txt"), "foo/bar/foo.txt should be ignored"
+        assert parser.should_ignore(
+            "foo/bar/foo.txt"
+        ), "foo/bar/foo.txt should be ignored"
 
     def test_anchored_pattern_in_subdirectory(self):
         """Test that anchored patterns in subdirectory only match immediate children."""
@@ -608,10 +623,14 @@ src/*.o
         assert not parser.should_ignore("foo.txt"), "Root foo.txt should not be ignored"
 
         # foo.txt directly in foo/ should be ignored
-        assert parser.should_ignore("foo/foo.txt"), "foo/foo.txt should be ignored by /foo.txt pattern"
+        assert parser.should_ignore(
+            "foo/foo.txt"
+        ), "foo/foo.txt should be ignored by /foo.txt pattern"
 
         # foo.txt in foo/bar/ should NOT be ignored (anchored pattern only matches immediate children)
-        assert not parser.should_ignore("foo/bar/foo.txt"), "foo/bar/foo.txt should NOT be ignored by /foo.txt pattern"
+        assert not parser.should_ignore(
+            "foo/bar/foo.txt"
+        ), "foo/bar/foo.txt should NOT be ignored by /foo.txt pattern"
 
     def test_double_star_pattern_scoping(self):
         """Test that **/pattern in subdirectory only applies within that subtree."""
@@ -634,16 +653,22 @@ src/*.o
         parser = GitignoreParser(str(test_dir))
 
         # foo.txt at root should NOT be ignored
-        assert not parser.should_ignore("foo.txt"), "Root foo.txt should not be ignored by foo/.gitignore"
+        assert not parser.should_ignore(
+            "foo.txt"
+        ), "Root foo.txt should not be ignored by foo/.gitignore"
 
         # foo.txt in foo/ should be ignored
         assert parser.should_ignore("foo/foo.txt"), "foo/foo.txt should be ignored"
 
         # foo.txt in foo/bar/ should be ignored (within foo/ subtree)
-        assert parser.should_ignore("foo/bar/foo.txt"), "foo/bar/foo.txt should be ignored"
+        assert parser.should_ignore(
+            "foo/bar/foo.txt"
+        ), "foo/bar/foo.txt should be ignored"
 
         # foo.txt in other/ should NOT be ignored (outside foo/ subtree)
-        assert not parser.should_ignore("other/foo.txt"), "other/foo.txt should NOT be ignored by foo/.gitignore"
+        assert not parser.should_ignore(
+            "other/foo.txt"
+        ), "other/foo.txt should NOT be ignored by foo/.gitignore"
 
     def test_anchored_double_star_pattern(self):
         """Test that /**/pattern in subdirectory works correctly."""
@@ -672,7 +697,11 @@ src/*.o
         assert parser.should_ignore("foo/foo.txt"), "foo/foo.txt should be ignored"
 
         # foo.txt in foo/bar/ should be ignored (within foo/ subtree)
-        assert parser.should_ignore("foo/bar/foo.txt"), "foo/bar/foo.txt should be ignored"
+        assert parser.should_ignore(
+            "foo/bar/foo.txt"
+        ), "foo/bar/foo.txt should be ignored"
 
         # foo.txt in other/ should NOT be ignored (outside foo/ subtree)
-        assert not parser.should_ignore("other/foo.txt"), "other/foo.txt should NOT be ignored by foo/.gitignore"
+        assert not parser.should_ignore(
+            "other/foo.txt"
+        ), "other/foo.txt should NOT be ignored by foo/.gitignore"

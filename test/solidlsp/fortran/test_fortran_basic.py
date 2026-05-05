@@ -11,6 +11,16 @@ from solidlsp import SolidLanguageServer
 from solidlsp.ls_config import Language
 from solidlsp.ls_types import SymbolKind
 from solidlsp.ls_utils import SymbolUtils
+from test.conftest import (
+    find_identifier_position,
+    get_repo_path,
+    language_has_verified_implementation_support,
+)
+from test.solidlsp.conftest import (
+    format_symbol_for_assert,
+    has_malformed_name,
+    request_all_symbols,
+)
 
 # Mark all tests in this module as fortran tests
 pytestmark = pytest.mark.fortran
@@ -25,42 +35,124 @@ class TestFortranLanguageServer:
         symbols = language_server.request_full_symbol_tree()
 
         # Verify program symbol
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "test_program"), "test_program not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "test_program"
+        ), "test_program not found in symbol tree"
 
         # Verify module symbol
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "math_utils"), "math_utils module not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "math_utils"
+        ), "math_utils module not found in symbol tree"
 
         # Verify function symbols
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "add_numbers"), "add_numbers function not found in symbol tree"
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "multiply_numbers"), "multiply_numbers function not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "add_numbers"
+        ), "add_numbers function not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "multiply_numbers"
+        ), "multiply_numbers function not found in symbol tree"
 
         # Verify subroutine symbol
-        assert SymbolUtils.symbol_tree_contains_name(symbols, "print_result"), "print_result subroutine not found in symbol tree"
+        assert SymbolUtils.symbol_tree_contains_name(
+            symbols, "print_result"
+        ), "print_result subroutine not found in symbol tree"
+
+    if language_has_verified_implementation_support(Language.FORTRAN):
+
+        @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
+        def test_find_implementations(
+            self, language_server: SolidLanguageServer
+        ) -> None:
+            repo_path = get_repo_path(Language.FORTRAN)
+            pos = find_identifier_position(
+                repo_path / "modules" / "geometry.f90", "distance"
+            )
+            assert pos is not None, "Could not find interface distance in geometry.f90"
+
+            implementations = language_server.request_implementation(
+                "modules/geometry.f90", *pos
+            )
+            assert (
+                implementations
+            ), "Expected implementations for geometry_types.distance"
+            implementation_files = {
+                implementation.get("relativePath", "")
+                for implementation in implementations
+            }
+            assert implementation_files == {
+                "modules/geometry.f90"
+            }, f"Unexpected implementation locations: {implementations}"
+            assert (
+                len(implementations) >= 2
+            ), f"Expected module procedure implementations, got: {implementations}"
+
+        @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
+        def test_request_implementing_symbols(
+            self, language_server: SolidLanguageServer
+        ) -> None:
+            repo_path = get_repo_path(Language.FORTRAN)
+            pos = find_identifier_position(
+                repo_path / "modules" / "geometry.f90", "distance"
+            )
+            assert pos is not None, "Could not find interface distance in geometry.f90"
+
+            implementing_symbols = language_server.request_implementing_symbols(
+                "modules/geometry.f90", *pos
+            )
+            assert (
+                implementing_symbols
+            ), "Expected implementing symbols for geometry_types.distance"
+            implementing_symbol_names = {
+                symbol.get("name") for symbol in implementing_symbols
+            }
+            assert {"distance_2d", "distance_3d"}.issubset(
+                implementing_symbol_names
+            ), f"Expected distance_2d and distance_3d, got: {implementing_symbols}"
 
     @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
-    def test_request_document_symbols(self, language_server: SolidLanguageServer) -> None:
+    def test_request_document_symbols(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test that document symbols can be retrieved from Fortran files."""
         # Test main.f90 - should have a program symbol
-        main_symbols, _ = language_server.request_document_symbols("main.f90").get_all_symbols_and_roots()
+        main_symbols, _ = language_server.request_document_symbols(
+            "main.f90"
+        ).get_all_symbols_and_roots()
         program_names = [s.get("name") for s in main_symbols]
-        assert "test_program" in program_names, f"Program 'test_program' not found in main.f90. Found: {program_names}"
+        assert (
+            "test_program" in program_names
+        ), f"Program 'test_program' not found in main.f90. Found: {program_names}"
 
         # Test modules/math_utils.f90 - should have module and function symbols
-        module_symbols, _ = language_server.request_document_symbols("modules/math_utils.f90").get_all_symbols_and_roots()
+        module_symbols, _ = language_server.request_document_symbols(
+            "modules/math_utils.f90"
+        ).get_all_symbols_and_roots()
         all_names = [s.get("name") for s in module_symbols]
-        assert "math_utils" in all_names, f"Module 'math_utils' not found. Found: {all_names}"
-        assert "add_numbers" in all_names, f"Function 'add_numbers' not found. Found: {all_names}"
-        assert "multiply_numbers" in all_names, f"Function 'multiply_numbers' not found. Found: {all_names}"
-        assert "print_result" in all_names, f"Subroutine 'print_result' not found. Found: {all_names}"
+        assert (
+            "math_utils" in all_names
+        ), f"Module 'math_utils' not found. Found: {all_names}"
+        assert (
+            "add_numbers" in all_names
+        ), f"Function 'add_numbers' not found. Found: {all_names}"
+        assert (
+            "multiply_numbers" in all_names
+        ), f"Function 'multiply_numbers' not found. Found: {all_names}"
+        assert (
+            "print_result" in all_names
+        ), f"Subroutine 'print_result' not found. Found: {all_names}"
 
     @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
-    def test_find_references_cross_file(self, language_server: SolidLanguageServer) -> None:
+    def test_find_references_cross_file(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test finding references across files using low-level request_references.
 
         This tests the LSP textDocument/references capability.
         """
         file_path = "modules/math_utils.f90"
-        symbols = language_server.request_document_symbols(file_path).get_all_symbols_and_roots()
+        symbols = language_server.request_document_symbols(
+            file_path
+        ).get_all_symbols_and_roots()
 
         # Find the add_numbers function
         add_numbers_symbol = None
@@ -69,14 +161,18 @@ class TestFortranLanguageServer:
                 add_numbers_symbol = sym
                 break
 
-        assert add_numbers_symbol is not None, "Could not find 'add_numbers' function symbol in math_utils.f90"
+        assert (
+            add_numbers_symbol is not None
+        ), "Could not find 'add_numbers' function symbol in math_utils.f90"
 
         # Use selectionRange to query for references
         # Note: FortranLanguageServer automatically fixes fortls's incorrect selectionRange
         sel_start = add_numbers_symbol["selectionRange"]["start"]
 
         # Query from the function name position using corrected selectionRange
-        refs = language_server.request_references(file_path, sel_start["line"], sel_start["character"])
+        refs = language_server.request_references(
+            file_path, sel_start["line"], sel_start["character"]
+        )
 
         # Should find references (usage in main.f90 + definition in math_utils.f90)
         assert len(refs) > 0, "Should find references to add_numbers function"
@@ -88,7 +184,9 @@ class TestFortranLanguageServer:
         ), f"Expected to find reference in main.f90, but found references in: {[ref.get('relativePath') for ref in refs]}"
 
     @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
-    def test_find_definition_cross_file(self, language_server: SolidLanguageServer) -> None:
+    def test_find_definition_cross_file(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test finding definition across files using request_definition."""
         # In main.f90, line 7 (0-indexed: line 6) contains: result = add_numbers(5.0, 3.0)
         # We want to find the definition of add_numbers in modules/math_utils.f90
@@ -98,7 +196,9 @@ class TestFortranLanguageServer:
         definition_location_list = language_server.request_definition(main_file, 6, 13)
 
         if not definition_location_list:
-            pytest.skip("fortls does not support cross-file go-to-definition for this case")
+            pytest.skip(
+                "fortls does not support cross-file go-to-definition for this case"
+            )
 
         assert len(definition_location_list) >= 1, "Should find at least one definition"
         definition_location = definition_location_list[0]
@@ -114,7 +214,9 @@ class TestFortranLanguageServer:
         ), f"Expected definition at line 4, but found at line {definition_location['range']['start']['line']}"
 
     @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
-    def test_request_referencing_symbols(self, language_server: SolidLanguageServer) -> None:
+    def test_request_referencing_symbols(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test finding symbols that reference a function - Serena's high-level API.
 
         This tests request_referencing_symbols which returns not just locations but also
@@ -125,7 +227,9 @@ class TestFortranLanguageServer:
         """
         # Get the add_numbers function symbol from math_utils.f90
         file_path = "modules/math_utils.f90"
-        symbols, _ = language_server.request_document_symbols(file_path).get_all_symbols_and_roots()
+        symbols, _ = language_server.request_document_symbols(
+            file_path
+        ).get_all_symbols_and_roots()
 
         # Find the add_numbers function
         add_numbers_symbol = None
@@ -134,15 +238,21 @@ class TestFortranLanguageServer:
                 add_numbers_symbol = sym
                 break
 
-        assert add_numbers_symbol is not None, "Could not find 'add_numbers' function symbol"
+        assert (
+            add_numbers_symbol is not None
+        ), "Could not find 'add_numbers' function symbol"
 
         # Use selectionRange to query for referencing symbols
         # FortranLanguageServer automatically corrects fortls's incorrect selectionRange
         sel_start = add_numbers_symbol["selectionRange"]["start"]
-        referencing_symbols = language_server.request_referencing_symbols(file_path, sel_start["line"], sel_start["character"])
+        referencing_symbols = language_server.request_referencing_symbols(
+            file_path, sel_start["line"], sel_start["character"]
+        )
 
         # Should find referencing symbols (not just locations, but symbols containing the references)
-        assert len(referencing_symbols) > 0, "Should find referencing symbols when querying from function name position"
+        assert (
+            len(referencing_symbols) > 0
+        ), "Should find referencing symbols when querying from function name position"
 
         # Extract the symbols from ReferenceInSymbol objects
         # This is what makes this test different from test_find_references_cross_file:
@@ -161,7 +271,9 @@ class TestFortranLanguageServer:
         # the API works and returns valid symbols with proper structure.
 
     @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
-    def test_request_defining_symbol(self, language_server: SolidLanguageServer) -> None:
+    def test_request_defining_symbol(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test finding the defining symbol - Serena's high-level API.
 
         This is similar to test_find_definition_cross_file but uses the high-level
@@ -176,30 +288,47 @@ class TestFortranLanguageServer:
         defining_symbol = language_server.request_defining_symbol(main_file, 6, 13)
 
         if defining_symbol is None:
-            pytest.skip("fortls does not support cross-file go-to-definition for this case")
+            pytest.skip(
+                "fortls does not support cross-file go-to-definition for this case"
+            )
 
         # Should find the add_numbers function with full symbol information
-        assert defining_symbol.get("name") == "add_numbers", f"Expected to find 'add_numbers' but got '{defining_symbol.get('name')}'"
+        assert (
+            defining_symbol.get("name") == "add_numbers"
+        ), f"Expected to find 'add_numbers' but got '{defining_symbol.get('name')}'"
 
         # Check if we have location information
-        if "location" not in defining_symbol or "relativePath" not in defining_symbol["location"]:
-            pytest.skip("fortls found the symbol but doesn't provide complete location information")
+        if (
+            "location" not in defining_symbol
+            or "relativePath" not in defining_symbol["location"]
+        ):
+            pytest.skip(
+                "fortls found the symbol but doesn't provide complete location information"
+            )
 
         # The definition should be in modules/math_utils.f90
         defining_path = defining_symbol["location"]["relativePath"]
-        assert "math_utils.f90" in defining_path, f"Expected definition to be in math_utils.f90, but found in: {defining_path}"
+        assert (
+            "math_utils.f90" in defining_path
+        ), f"Expected definition to be in math_utils.f90, but found in: {defining_path}"
 
     @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
-    def test_request_containing_symbol(self, language_server: SolidLanguageServer) -> None:
+    def test_request_containing_symbol(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test finding the containing symbol for a position in the code."""
         # Test finding the containing symbol for a position inside the add_numbers function
         file_path = "modules/math_utils.f90"
 
         # Line 8 (0-indexed: line 7) is inside the add_numbers function: "sum = a + b"
-        containing_symbol = language_server.request_containing_symbol(file_path, 7, 10, include_body=False)
+        containing_symbol = language_server.request_containing_symbol(
+            file_path, 7, 10, include_body=False
+        )
 
         if containing_symbol is None:
-            pytest.skip("fortls does not support request_containing_symbol or couldn't find the containing symbol")
+            pytest.skip(
+                "fortls does not support request_containing_symbol or couldn't find the containing symbol"
+            )
 
         # Should find the add_numbers function as the containing symbol
         assert (
@@ -212,13 +341,19 @@ class TestFortranLanguageServer:
         ), f"Expected Function kind ({SymbolKind.Function.value}), got {containing_symbol.get('kind')}"
 
         # Verify location information exists
-        assert "location" in containing_symbol, "Containing symbol should have location information"
+        assert (
+            "location" in containing_symbol
+        ), "Containing symbol should have location information"
         location = containing_symbol["location"]
         assert "range" in location, "Location should contain range information"
-        assert "start" in location["range"] and "end" in location["range"], "Range should have start and end positions"
+        assert (
+            "start" in location["range"] and "end" in location["range"]
+        ), "Range should have start and end positions"
 
     @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
-    def test_type_and_interface_symbols(self, language_server: SolidLanguageServer) -> None:
+    def test_type_and_interface_symbols(
+        self, language_server: SolidLanguageServer
+    ) -> None:
         """Test that type definitions and interfaces are properly recognized with corrected selectionRange.
 
         This verifies that the regex pattern correctly handles:
@@ -230,7 +365,9 @@ class TestFortranLanguageServer:
         fortls returns these as SymbolKind.Class (11) for types and SymbolKind.Interface (5) for interfaces.
         """
         file_path = "modules/geometry.f90"
-        symbols, _ = language_server.request_document_symbols(file_path).get_all_symbols_and_roots()
+        symbols, _ = language_server.request_document_symbols(
+            file_path
+        ).get_all_symbols_and_roots()
 
         # Find type and interface symbols
         type_names = []
@@ -242,12 +379,20 @@ class TestFortranLanguageServer:
                 interface_names.append(sym.get("name"))
 
         # Verify type definitions are found
-        assert "Point2D" in type_names, f"Simple type 'Point2D' not found. Found types: {type_names}"
-        assert "Circle" in type_names, f"Type with :: syntax 'Circle' not found. Found types: {type_names}"
-        assert "Point3D" in type_names, f"Type with extends 'Point3D' not found. Found types: {type_names}"
+        assert (
+            "Point2D" in type_names
+        ), f"Simple type 'Point2D' not found. Found types: {type_names}"
+        assert (
+            "Circle" in type_names
+        ), f"Type with :: syntax 'Circle' not found. Found types: {type_names}"
+        assert (
+            "Point3D" in type_names
+        ), f"Type with extends 'Point3D' not found. Found types: {type_names}"
 
         # Verify interface is found
-        assert "distance" in interface_names, f"Interface 'distance' not found. Found interfaces: {interface_names}"
+        assert (
+            "distance" in interface_names
+        ), f"Interface 'distance' not found. Found interfaces: {interface_names}"
 
         # Verify selectionRange is corrected for a type symbol
         point3d_symbol = None
@@ -269,6 +414,21 @@ class TestFortranLanguageServer:
         ), f"selectionRange should point to identifier, not line start. Got character: {sel_start['character']}"
 
         # Test that we can find references using the corrected position
-        _refs = language_server.request_references(file_path, sel_start["line"], sel_start["character"])
+        _refs = language_server.request_references(
+            file_path, sel_start["line"], sel_start["character"]
+        )
         # refs might be empty if Point3D isn't used elsewhere, but the call should not fail
         # The important thing is that it doesn't error due to wrong character position
+
+    @pytest.mark.parametrize("language_server", [Language.FORTRAN], indirect=True)
+    def test_bare_symbol_names(self, language_server) -> None:
+        all_symbols = request_all_symbols(language_server)
+        malformed_symbols = []
+        for s in all_symbols:
+            if has_malformed_name(s):
+                malformed_symbols.append(s)
+        if malformed_symbols:
+            pytest.fail(
+                f"Found malformed symbols: {[format_symbol_for_assert(sym) for sym in malformed_symbols]}",
+                pytrace=False,
+            )

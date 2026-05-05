@@ -37,10 +37,7 @@ import pathlib
 import platform
 import shutil
 import threading
-import zipfile
-from typing import Any, Union, cast
-
-import requests
+from typing import Any, cast
 
 from solidlsp.ls import (
     LanguageServerDependencyProvider,
@@ -48,6 +45,7 @@ from solidlsp.ls import (
     SolidLanguageServer,
 )
 from solidlsp.ls_config import LanguageServerConfig
+from solidlsp.ls_utils import FileUtils
 from solidlsp.lsp_protocol_handler.lsp_types import (
     DocumentSymbol,
     InitializeParams,
@@ -60,10 +58,36 @@ log = logging.getLogger(__name__)
 # Environment variable for MATLAB installation path
 MATLAB_PATH_ENV_VAR = "MATLAB_PATH"
 
-# VS Code Marketplace URL for MATLAB extension
-MATLAB_EXTENSION_URL = (
-    "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/MathWorks/vsextensions/language-matlab/latest/vspackage"
+MATLAB_EXTENSION_ALLOWED_HOSTS = ("marketplace.visualstudio.com",)
+
+# Version pinning convention (see eclipse_jdtls.py for the full spec):
+#   INITIAL_* — frozen forever; legacy unversioned install dir is reserved for it.
+#   DEFAULT_* — bumped on upgrades; goes into a versioned subdir.
+INITIAL_MATLAB_EXTENSION_VERSION = "1.3.9"
+INITIAL_MATLAB_EXTENSION_SHA256 = (
+    "1da3add2c3a593fa0ebcdf1d15231faee8014de10f549c36915ab9d4f18390f2"
 )
+DEFAULT_MATLAB_EXTENSION_VERSION = "1.3.9"
+DEFAULT_MATLAB_EXTENSION_SHA256 = (
+    "1da3add2c3a593fa0ebcdf1d15231faee8014de10f549c36915ab9d4f18390f2"
+)
+
+
+def _matlab_extension_sha(version: str) -> str | None:
+    if version == INITIAL_MATLAB_EXTENSION_VERSION:
+        return INITIAL_MATLAB_EXTENSION_SHA256
+    if version == DEFAULT_MATLAB_EXTENSION_VERSION:
+        return DEFAULT_MATLAB_EXTENSION_SHA256
+    return None
+
+
+def _matlab_extension_dirname(version: str) -> str:
+    # legacy unversioned dir reserved for INITIAL; every other version goes into a versioned subdir
+    return (
+        "matlab-extension"
+        if version == INITIAL_MATLAB_EXTENSION_VERSION
+        else f"matlab-extension-{version}"
+    )
 
 
 class MatlabLanguageServer(SolidLanguageServer):
@@ -80,9 +104,16 @@ class MatlabLanguageServer(SolidLanguageServer):
 
     You can pass the following entries in ls_specific_settings["matlab"]:
         - matlab_path: Path to MATLAB installation (overrides MATLAB_PATH env var)
+        - matlab_extension_version: Override the pinned MathWorks VS Code extension
+          version downloaded by Serena (default: the bundled Serena version)
     """
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         """
         Creates a MatlabLanguageServer instance. This class is not meant to be instantiated directly.
         Use LanguageServer.create() instead.
@@ -105,66 +136,34 @@ class MatlabLanguageServer(SolidLanguageServer):
         return self.DependencyProvider(self._custom_settings, self._ls_resources_dir)
 
     class DependencyProvider(LanguageServerDependencyProvider):
-        def __init__(self, custom_settings: SolidLSPSettings.CustomLSSettings, ls_resources_dir: str):
+        def __init__(
+            self,
+            custom_settings: SolidLSPSettings.CustomLSSettings,
+            ls_resources_dir: str,
+        ):
             super().__init__(custom_settings, ls_resources_dir)
             self._matlab_path: str | None = None
 
         @classmethod
-        def _download_matlab_extension(cls, url: str, target_dir: str) -> bool:
+        def _download_matlab_extension(
+            cls, url: str, target_dir: str, expected_sha256: str | None
+        ) -> bool:
             """
             Download and extract the MATLAB extension from VS Code marketplace.
 
             The VS Code marketplace packages extensions as .vsix files (which are ZIP archives).
             This method downloads the VSIX file and extracts it to get the language server.
-
-            Args:
-                url: VS Code marketplace URL for the MATLAB extension
-                target_dir: Directory where the extension will be extracted
-
-            Returns:
-                True if successful, False otherwise
-
             """
             try:
                 log.info(f"Downloading MATLAB extension from {url}")
-
-                # Create target directory for the extension
                 os.makedirs(target_dir, exist_ok=True)
-
-                # Download with proper headers to mimic VS Code marketplace client
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Accept": "application/octet-stream, application/vsix, */*",
-                }
-
-                response = requests.get(url, headers=headers, stream=True, timeout=300)
-                response.raise_for_status()
-
-                # Save to temporary VSIX file
-                temp_file = os.path.join(target_dir, "matlab_extension_temp.vsix")
-                total_size = int(response.headers.get("content-length", 0))
-
-                log.info(f"Downloading {total_size / 1024 / 1024:.1f} MB...")
-
-                with open(temp_file, "wb") as f:
-                    downloaded = 0
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total_size > 0 and downloaded % (10 * 1024 * 1024) == 0:
-                                progress = (downloaded / total_size) * 100
-                                log.info(f"Download progress: {progress:.1f}%")
-
-                log.info("Download complete, extracting...")
-
-                # Extract VSIX file (VSIX files are ZIP archives)
-                with zipfile.ZipFile(temp_file, "r") as zip_ref:
-                    zip_ref.extractall(target_dir)
-
-                # Clean up temp file
-                os.remove(temp_file)
-
+                FileUtils.download_and_extract_archive_verified(
+                    url,
+                    target_dir,
+                    "zip",
+                    expected_sha256=expected_sha256,
+                    allowed_hosts=MATLAB_EXTENSION_ALLOWED_HOSTS,
+                )
                 log.info("MATLAB extension extracted successfully")
                 return True
 
@@ -188,13 +187,24 @@ class MatlabLanguageServer(SolidLanguageServer):
             # Check environment variable
             env_path = os.environ.get("MATLAB_EXTENSION_PATH")
             if env_path and os.path.exists(env_path):
-                log.debug(f"Found MATLAB extension via MATLAB_EXTENSION_PATH: {env_path}")
+                log.debug(
+                    f"Found MATLAB extension via MATLAB_EXTENSION_PATH: {env_path}"
+                )
                 return env_path
             elif env_path:
-                log.warning(f"MATLAB_EXTENSION_PATH set but directory not found: {env_path}")
+                log.warning(
+                    f"MATLAB_EXTENSION_PATH set but directory not found: {env_path}"
+                )
 
-            # Check default download location
-            default_path = os.path.join(self._ls_resources_dir, "matlab-extension", "extension")
+            # Check the resolved-version download location (versioned for non-INITIAL, legacy "matlab-extension" for INITIAL)
+            matlab_extension_version = self._custom_settings.get(
+                "matlab_extension_version", DEFAULT_MATLAB_EXTENSION_VERSION
+            )
+            default_path = os.path.join(
+                self._ls_resources_dir,
+                _matlab_extension_dirname(matlab_extension_version),
+                "extension",
+            )
             if os.path.exists(default_path):
                 log.debug(f"Found MATLAB extension in default location: {default_path}")
                 return default_path
@@ -220,17 +230,33 @@ class MatlabLanguageServer(SolidLanguageServer):
                 Path to installed extension or None if download failed
 
             """
-            matlab_extension_dir = os.path.join(self._ls_resources_dir, "matlab-extension")
+            matlab_extension_version = self._custom_settings.get(
+                "matlab_extension_version", DEFAULT_MATLAB_EXTENSION_VERSION
+            )
+            matlab_extension_dir = os.path.join(
+                self._ls_resources_dir,
+                _matlab_extension_dirname(matlab_extension_version),
+            )
+            matlab_extension_url = (
+                "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/MathWorks/"
+                f"vsextensions/language-matlab/{matlab_extension_version}/vspackage"
+            )
 
-            log.info(f"Downloading MATLAB extension from: {MATLAB_EXTENSION_URL}")
+            log.info(f"Downloading MATLAB extension from: {matlab_extension_url}")
 
-            if self._download_matlab_extension(MATLAB_EXTENSION_URL, matlab_extension_dir):
+            if self._download_matlab_extension(
+                matlab_extension_url,
+                matlab_extension_dir,
+                _matlab_extension_sha(matlab_extension_version),
+            ):
                 extension_path = os.path.join(matlab_extension_dir, "extension")
                 if os.path.exists(extension_path):
                     log.info("MATLAB extension downloaded and installed successfully")
                     return extension_path
                 else:
-                    log.error(f"Download completed but extension not found at: {extension_path}")
+                    log.error(
+                        f"Download completed but extension not found at: {extension_path}"
+                    )
             else:
                 log.error("Failed to download MATLAB extension from marketplace")
 
@@ -255,7 +281,9 @@ class MatlabLanguageServer(SolidLanguageServer):
             if os.path.exists(alt_script):
                 return alt_script
 
-            raise RuntimeError(f"MATLAB language server script not found in extension at {extension_path}")
+            raise RuntimeError(
+                f"MATLAB language server script not found in extension at {extension_path}"
+            )
 
         @staticmethod
         def _find_matlab_installation() -> str:
@@ -276,7 +304,9 @@ class MatlabLanguageServer(SolidLanguageServer):
             # Check environment variable first
             matlab_path = os.environ.get(MATLAB_PATH_ENV_VAR)
             if matlab_path and os.path.isdir(matlab_path):
-                log.info(f"Using MATLAB from environment variable {MATLAB_PATH_ENV_VAR}: {matlab_path}")
+                log.info(
+                    f"Using MATLAB from environment variable {MATLAB_PATH_ENV_VAR}: {matlab_path}"
+                )
                 return matlab_path
 
             system = platform.system()
@@ -289,7 +319,9 @@ class MatlabLanguageServer(SolidLanguageServer):
                     os.path.expanduser("~/Applications/MATLAB_*.app"),
                 ]
                 for pattern in search_patterns:
-                    matches = sorted(glob.glob(pattern), reverse=True)  # Newest version first
+                    matches = sorted(
+                        glob.glob(pattern), reverse=True
+                    )  # Newest version first
                     for match in matches:
                         if os.path.isdir(match):
                             log.info(f"Found MATLAB installation: {match}")
@@ -336,27 +368,35 @@ class MatlabLanguageServer(SolidLanguageServer):
             matlab_path = self._custom_settings.get("matlab_path")
 
             if not matlab_path:
-                matlab_path = self._find_matlab_installation()  # Raises RuntimeError if not found
+                matlab_path = (
+                    self._find_matlab_installation()
+                )  # Raises RuntimeError if not found
 
             # Verify MATLAB path exists
             if not os.path.isdir(matlab_path):
-                raise RuntimeError(f"MATLAB installation directory does not exist: {matlab_path}")
+                raise RuntimeError(
+                    f"MATLAB installation directory does not exist: {matlab_path}"
+                )
 
             log.info(f"Using MATLAB installation: {matlab_path}")
 
             self._matlab_path = matlab_path
             return matlab_path
 
-        def create_launch_command(self) -> Union[str, list[str]]:
+        def create_launch_command(self) -> list[str]:
             # Verify node is installed
             node_path = shutil.which("node")
             if node_path is None:
-                raise RuntimeError("Node.js is not installed or isn't in PATH. Please install Node.js and try again.")
+                raise RuntimeError(
+                    "Node.js is not installed or isn't in PATH. Please install Node.js and try again."
+                )
 
             # Find existing extension or download if needed
             extension_path = self._find_matlab_extension()
             if extension_path is None:
-                log.info("MATLAB extension not found on disk, attempting to download...")
+                log.info(
+                    "MATLAB extension not found on disk, attempting to download..."
+                )
                 extension_path = self._download_and_install_matlab_extension()
 
             if extension_path is None:
@@ -371,7 +411,9 @@ class MatlabLanguageServer(SolidLanguageServer):
             server_script = self._get_executable_path(extension_path)
 
             if not os.path.exists(server_script):
-                raise RuntimeError(f"MATLAB Language Server script not found at: {server_script}")
+                raise RuntimeError(
+                    f"MATLAB Language Server script not found at: {server_script}"
+                )
 
             # Build the command to run the language server
             # The MATLAB language server is run via Node.js with the --stdio flag
@@ -403,7 +445,10 @@ class MatlabLanguageServer(SolidLanguageServer):
                         "hierarchicalDocumentSymbolSupport": True,
                         "symbolKind": {"valueSet": list(range(1, 27))},
                     },
-                    "hover": {"dynamicRegistration": True, "contentFormat": ["markdown", "plaintext"]},
+                    "hover": {
+                        "dynamicRegistration": True,
+                        "contentFormat": ["markdown", "plaintext"],
+                    },
                     "signatureHelp": {"dynamicRegistration": True},
                     "codeAction": {"dynamicRegistration": True},
                     "formatting": {"dynamicRegistration": True},
@@ -444,7 +489,9 @@ class MatlabLanguageServer(SolidLanguageServer):
 
         def workspace_folders_handler(params: dict) -> list:
             """Handle workspace/workspaceFolders request from the server."""
-            return [{"uri": root_uri, "name": os.path.basename(self.repository_root_path)}]
+            return [
+                {"uri": root_uri, "name": os.path.basename(self.repository_root_path)}
+            ]
 
         def workspace_configuration_handler(params: dict) -> list:
             """Handle workspace/configuration request from the server."""
@@ -454,7 +501,12 @@ class MatlabLanguageServer(SolidLanguageServer):
                 section = item.get("section", "")
                 if section == "MATLAB":
                     # Return MATLAB configuration
-                    result.append({"installPath": self._matlab_path, "matlabConnectionTiming": "onStart"})
+                    result.append(
+                        {
+                            "installPath": self._matlab_path,
+                            "matlabConnectionTiming": "onStart",
+                        }
+                    )
                 else:
                     result.append({})
             return result
@@ -468,16 +520,22 @@ class MatlabLanguageServer(SolidLanguageServer):
             # Check for MATLAB language server ready signals
             # Wait for "MVM attach success" or "Adding workspace folder" which indicates MATLAB is fully ready
             # Note: "connected to" comes earlier but the server isn't fully ready at that point
-            if "mvm attach success" in message_text.lower() or "adding workspace folder" in message_text.lower():
+            if (
+                "mvm attach success" in message_text.lower()
+                or "adding workspace folder" in message_text.lower()
+            ):
                 log.info("MATLAB language server ready signal detected (MVM attached)")
                 self.server_ready.set()
-                self.completions_available.set()
 
         self.server.on_request("client/registerCapability", register_capability_handler)
         self.server.on_notification("window/logMessage", window_log_message)
-        self.server.on_request("workspace/executeClientCommand", execute_client_command_handler)
+        self.server.on_request(
+            "workspace/executeClientCommand", execute_client_command_handler
+        )
         self.server.on_request("workspace/workspaceFolders", workspace_folders_handler)
-        self.server.on_request("workspace/configuration", workspace_configuration_handler)
+        self.server.on_request(
+            "workspace/configuration", workspace_configuration_handler
+        )
         self.server.on_notification("$/progress", do_nothing)
         self.server.on_notification("textDocument/publishDiagnostics", do_nothing)
 
@@ -485,13 +543,18 @@ class MatlabLanguageServer(SolidLanguageServer):
         self.server.start()
         initialize_params = self._get_initialize_params(self.repository_root_path)
 
-        log.info("Sending initialize request from LSP client to LSP server and awaiting response")
+        log.info(
+            "Sending initialize request from LSP client to LSP server and awaiting response"
+        )
         init_response = self.server.send.initialize(initialize_params)
         log.debug(f"Received initialize response from MATLAB server: {init_response}")
 
         # Verify basic capabilities
         capabilities = init_response.get("capabilities", {})
-        assert capabilities.get("textDocumentSync") in [1, 2], "Expected Full or Incremental text sync"
+        assert capabilities.get("textDocumentSync") in [
+            1,
+            2,
+        ], "Expected Full or Incremental text sync"
 
         # Log available capabilities
         if "completionProvider" in capabilities:
@@ -511,12 +574,15 @@ class MatlabLanguageServer(SolidLanguageServer):
 
         # Wait for server readiness with timeout
         # MATLAB takes longer to start than most language servers (typically 10-30 seconds)
-        log.info("Waiting for MATLAB language server to be ready (this may take up to 60 seconds)...")
+        log.info(
+            "Waiting for MATLAB language server to be ready (this may take up to 60 seconds)..."
+        )
         if not self.server_ready.wait(timeout=60.0):
             # Fallback: assume server is ready after timeout
-            log.info("Timeout waiting for MATLAB server ready signal, proceeding anyway")
+            log.info(
+                "Timeout waiting for MATLAB server ready signal, proceeding anyway"
+            )
             self.server_ready.set()
-            self.completions_available.set()
         else:
             log.info("MATLAB server initialization complete")
 
@@ -547,7 +613,9 @@ class MatlabLanguageServer(SolidLanguageServer):
         self._normalize_matlab_symbols(symbols)
         return symbols
 
-    def _normalize_matlab_symbols(self, symbols: list[SymbolInformation] | list[DocumentSymbol]) -> None:
+    def _normalize_matlab_symbols(
+        self, symbols: list[SymbolInformation] | list[DocumentSymbol]
+    ) -> None:
         """
         Normalize MATLAB symbol names in-place.
 

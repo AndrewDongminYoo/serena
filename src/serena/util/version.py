@@ -16,14 +16,18 @@ class Version:
         elif hasattr(package_or_version, "__version__"):
             package_version_string = getattr(package_or_version, "__version__", None)
             if package_version_string is None:
-                raise ValueError(f"The given package object {package_or_version} has no __version__ attribute")
+                raise ValueError(
+                    f"The given package object {package_or_version} has no __version__ attribute"
+                )
             version_string = package_version_string
         else:
-            raise ValueError("The given argument must be either a version string or a package object with a __version__ attribute")
+            raise ValueError(
+                "The given argument must be either a version string or a package object with a __version__ attribute"
+            )
         self.version_string = version_string
         self.components = self._get_version_components(version_string)
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         return self.version_string
 
     @staticmethod

@@ -16,7 +16,6 @@ T = TypeVar("T")
 
 
 class ExecutionResult(Generic[T], ToStringMixin):
-
     class Status(Enum):
         SUCCESS = "success"
         TIMEOUT = "timeout"
@@ -40,7 +39,9 @@ class ExecutionResult(Generic[T], ToStringMixin):
         self.status = ExecutionResult.Status.EXCEPTION
 
 
-def execute_with_timeout(func: Callable[[], T], timeout: float, function_name: str) -> ExecutionResult[T]:
+def execute_with_timeout(
+    func: Callable[[], T], timeout: float, function_name: str
+) -> ExecutionResult[T]:
     """
     Executes the given function with a timeout
 
@@ -63,7 +64,10 @@ def execute_with_timeout(func: Callable[[], T], timeout: float, function_name: s
     thread.join(timeout=timeout)
 
     if thread.is_alive():
-        timeout_exception = TimeoutException(f"Execution of '{function_name}' timed out after {timeout} seconds.", timeout)
+        timeout_exception = TimeoutException(
+            f"Execution of '{function_name}' timed out after {timeout} seconds.",
+            timeout,
+        )
         execution_result.set_timed_out(timeout_exception)
 
     return execution_result

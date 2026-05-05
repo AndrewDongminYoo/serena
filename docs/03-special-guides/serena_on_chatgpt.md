@@ -17,7 +17,6 @@ Run the following command to launch Serena as http server (assuming port 8000):
 
 ```bash
 uvx mcpo --port 8000 --api-key <YOUR_SECRET_KEY> -- \
-  uvx --from git+https://github.com/oraios/serena \
   serena start-mcp-server --context chatgpt --project $(pwd)
 ```
 
@@ -28,7 +27,7 @@ You can also use other options, and you don't have to pass `--project` if you wa
 or want to activate it later. See
 
 ```shell
-uvx --from git+https://github.com/oraios/serena serena start-mcp-server --help
+serena start-mcp-server --help
 ```
 
 ---
@@ -43,7 +42,7 @@ cloudflared tunnel --url http://localhost:8000
 
 This will give you a **public HTTPS URL** like:
 
-```text
+```
 https://serena-agent-tunnel.trycloudflare.com
 ```
 
@@ -60,7 +59,7 @@ Your server is now securely exposed to the internet.
 3. Set up **API Key authentication** with the auth type as **Bearer** and enter the api key you used to start the MCPO server.
 4. In the **Schema** section, click on **import from URL** and paste `<cloudflared_url>/openapi.json` with the URL you got from the previous step.
 5. Add the following line to the top of the imported JSON schema:
-   ```json
+   ```
     "servers": ["url": "<cloudflared_url>"],
    ```
    **Important**: don't include a trailing slash at the end of the URL!

@@ -34,13 +34,24 @@ class User(BaseModel):
     User model representing a system user.
     """
 
-    def __init__(self, id: str, name: str | None = None, email: str = "", roles: list[str] | None = None):
+    def __init__(
+        self,
+        id: str,
+        name: str | None = None,
+        email: str = "",
+        roles: list[str] | None = None,
+    ):
         super().__init__(id, name)
         self.email = email
         self.roles = roles or []
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name, "email": self.email, "roles": self.roles}
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "roles": self.roles,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "User":
@@ -59,13 +70,20 @@ class Item(BaseModel):
     Item model representing a product or service.
     """
 
-    def __init__(self, id: str, name: str | None = None, price: float = 0.0, category: str = ""):
+    def __init__(
+        self, id: str, name: str | None = None, price: float = 0.0, category: str = ""
+    ):
         super().__init__(id, name)
         self.price = price
         self.category = category
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name, "price": self.price, "category": self.category}
+        return {
+            "id": self.id,
+            "name": self.name,
+            "price": self.price,
+            "category": self.category,
+        }
 
     def get_display_price(self) -> str:
         """Format price for display"""
@@ -85,7 +103,9 @@ class Collection(Generic[T]):
 
 
 # Factory function
-def create_user_object(id: str, name: str, email: str, roles: list[str] | None = None) -> User:
+def create_user_object(
+    id: str, name: str, email: str, roles: list[str] | None = None
+) -> User:
     """Factory function to create a user"""
     return User(id=id, name=name, email=email, roles=roles)
 
@@ -171,7 +191,11 @@ class DataService(BaseService):
         self.data_source = kwargs.get("data_source", "default")
 
     def get_service_info(self) -> dict[str, str]:
-        return {"service_type": "data", "service_name": self.service_name, "data_source": self.data_source}
+        return {
+            "service_type": "data",
+            "service_name": self.service_name,
+            "data_source": self.data_source,
+        }
 
 
 class NetworkService(BaseService):
@@ -185,7 +209,11 @@ class NetworkService(BaseService):
         self.endpoint = kwargs.get("endpoint", "localhost")
 
     def get_service_info(self) -> dict[str, str]:
-        return {"service_type": "network", "service_name": self.service_name, "endpoint": self.endpoint}
+        return {
+            "service_type": "network",
+            "service_name": self.service_name,
+            "endpoint": self.endpoint,
+        }
 
 
 class DataSyncService(DataService, NetworkService):
@@ -200,7 +228,9 @@ class DataSyncService(DataService, NetworkService):
 
     def get_service_info(self) -> dict[str, str]:
         info = super().get_service_info()
-        info.update({"service_type": "data_sync", "sync_interval": str(self.sync_interval)})
+        info.update(
+            {"service_type": "data_sync", "sync_interval": str(self.sync_interval)}
+        )
         return info
 
 
@@ -213,7 +243,13 @@ class LoggableUser(User, Loggable):
     Example of extending a concrete class with a mixin.
     """
 
-    def __init__(self, id: str, name: str | None = None, email: str = "", roles: list[str] | None = None):
+    def __init__(
+        self,
+        id: str,
+        name: str | None = None,
+        email: str = "",
+        roles: list[str] | None = None,
+    ):
         super().__init__(id=id, name=name, email=email, roles=roles)
 
     def add_role(self, role: str) -> None:
@@ -230,9 +266,22 @@ class TrackedItem(Item, Serializable, Auditable):
     """
 
     def __init__(
-        self, id: str, name: str | None = None, price: float = 0.0, category: str = "", created_at: str = "", updated_at: str = ""
+        self,
+        id: str,
+        name: str | None = None,
+        price: float = 0.0,
+        category: str = "",
+        created_at: str = "",
+        updated_at: str = "",
     ):
-        super().__init__(id=id, name=name, price=price, category=category, created_at=created_at, updated_at=updated_at)
+        super().__init__(
+            id=id,
+            name=name,
+            price=price,
+            category=category,
+            created_at=created_at,
+            updated_at=updated_at,
+        )
         self.stock_level = 0
 
     def update_stock(self, quantity: int) -> None:
@@ -242,5 +291,11 @@ class TrackedItem(Item, Serializable, Auditable):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({"stock_level": self.stock_level, "created_at": self.created_at, "updated_at": self.updated_at})
+        result.update(
+            {
+                "stock_level": self.stock_level,
+                "created_at": self.created_at,
+                "updated_at": self.updated_at,
+            }
+        )
         return result

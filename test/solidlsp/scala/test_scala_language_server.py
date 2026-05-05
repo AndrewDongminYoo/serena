@@ -1,3 +1,4 @@
+# type: ignore
 import os
 
 import pytest
@@ -5,8 +6,12 @@ import pytest
 from solidlsp.language_servers.scala_language_server import ScalaLanguageServer
 from solidlsp.ls_config import Language, LanguageServerConfig
 from solidlsp.settings import SolidLSPSettings
+from test.solidlsp.util.diagnostics import assert_file_diagnostics
 
-pytest.skip("Scala must be compiled for these tests to run through, which is a huge hassle", allow_module_level=True)
+pytest.skip(
+    "Scala must be compiled for these tests to run through, which is a huge hassle",
+    allow_module_level=True,
+)
 
 MAIN_FILE_PATH = os.path.join("src", "main", "scala", "com", "example", "Main.scala")
 
@@ -26,7 +31,9 @@ def scala_ls():
 
 def test_scala_document_symbols(scala_ls):
     """Test document symbols for Main.scala"""
-    symbols, _ = scala_ls.request_document_symbols(MAIN_FILE_PATH).get_all_symbols_and_roots()
+    symbols, _ = scala_ls.request_document_symbols(
+        MAIN_FILE_PATH
+    ).get_all_symbols_and_roots()
     symbol_names = [s["name"] for s in symbols]
     assert symbol_names[0] == "com.example"
     assert symbol_names[1] == "Main"
@@ -37,7 +44,9 @@ def test_scala_document_symbols(scala_ls):
     assert symbol_names[6] == "someMethod"
     assert symbol_names[7] == "str"
     assert symbol_names[8] == "Config"
-    assert symbol_names[9] == "field1"  # confirm https://github.com/oraios/serena/issues/688
+    assert (
+        symbol_names[9] == "field1"
+    )  # confirm https://github.com/oraios/serena/issues/688
 
 
 def test_scala_references_within_same_file(scala_ls):
@@ -61,3 +70,12 @@ def test_scala_find_definition_and_references_across_files(scala_ls):
     assert first_def["range"]["start"]["character"] == 6
     assert first_def["range"]["end"]["line"] == 7
     assert first_def["range"]["end"]["character"] == 14
+
+
+def test_file_diagnostics(scala_ls) -> None:
+    assert_file_diagnostics(
+        scala_ls,
+        "src/main/scala/com/example/DiagnosticsSample.scala",
+        (),
+        min_count=1,
+    )

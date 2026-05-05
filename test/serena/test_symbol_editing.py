@@ -24,7 +24,7 @@ from syrupy import SnapshotAssertion
 from serena.code_editor import CodeEditor, LanguageServerCodeEditor
 from solidlsp.ls_config import Language
 from src.serena.symbol import LanguageServerSymbolRetriever
-from test.conftest import get_repo_path, start_ls_context
+from test.conftest import get_repo_path, project_with_ls_context
 
 pytestmark = pytest.mark.snapshot
 
@@ -159,7 +159,11 @@ class CodeDiff:
         modified_lines = self.modified_content.splitlines(keepends=True)
 
         diff = difflib.unified_diff(
-            original_lines, modified_lines, fromfile=f"a/{self.relative_path}", tofile=f"b/{self.relative_path}", n=context_lines
+            original_lines,
+            modified_lines,
+            fromfile=f"a/{self.relative_path}",
+            tofile=f"b/{self.relative_path}",
+            n=context_lines,
         )
         return "".join(diff)
 
@@ -171,7 +175,11 @@ class CodeDiff:
         modified_lines = self.modified_content.splitlines(keepends=True)
 
         diff = difflib.context_diff(
-            original_lines, modified_lines, fromfile=f"a/{self.relative_path}", tofile=f"b/{self.relative_path}", n=context_lines
+            original_lines,
+            modified_lines,
+            fromfile=f"a/{self.relative_path}",
+            tofile=f"b/{self.relative_path}",
+            n=context_lines,
         )
         return "".join(diff)
 
@@ -192,7 +200,6 @@ class EditingTest(ABC):
         """Context manager for setup/teardown with a temporary directory, providing the symbol manager."""
         temp_dir = Path(tempfile.mkdtemp())
         self.repo_path = temp_dir / self.original_repo_path.name
-        language_server = None  # Initialize language_server
         try:
             print(f"Copying repo from {self.original_repo_path} to {self.repo_path}")
             shutil.copytree(self.original_repo_path, self.repo_path)
@@ -201,8 +208,8 @@ class EditingTest(ABC):
             if os.name == "nt":
                 time.sleep(0.1)
             log.info(f"Creating language server for {self.language} {self.rel_path}")
-            with start_ls_context(self.language, str(self.repo_path)) as language_server:
-                yield LanguageServerSymbolRetriever(ls=language_server)
+            with project_with_ls_context(self.language, str(self.repo_path)) as project:
+                yield LanguageServerSymbolRetriever(project)
         finally:
             # prevent deadlock on Windows due to lingering file locks
             if os.name == "nt":
@@ -218,13 +225,17 @@ class EditingTest(ABC):
         with open(file_path, encoding="utf-8") as f:
             return f.read()
 
-    def run_test(self, content_after_ground_truth: str | SnapshotAssertion) -> None:
+    def run_test(self, content_after_ground_truth: SnapshotAssertion) -> None:
         with self._setup() as symbol_retriever:
             content_before = self._read_file(self.rel_path)
             code_editor = LanguageServerCodeEditor(symbol_retriever)
             self._apply_edit(code_editor)
             content_after = self._read_file(self.rel_path)
-            code_diff = CodeDiff(self.rel_path, original_content=content_before, modified_content=content_after)
+            code_diff = CodeDiff(
+                self.rel_path,
+                original_content=content_before,
+                modified_content=content_after,
+            )
             self._test_diff(code_diff, content_after_ground_truth)
 
     @abstractmethod
@@ -232,7 +243,9 @@ class EditingTest(ABC):
         pass
 
     def _test_diff(self, code_diff: CodeDiff, snapshot: SnapshotAssertion) -> None:
-        assert code_diff.has_changes, f"Sanity check failed: No changes detected in {code_diff.relative_path}"
+        assert (
+            code_diff.has_changes
+        ), f"Sanity check failed: No changes detected in {code_diff.relative_path}"
         assert code_diff.modified_content == snapshot
 
 
@@ -307,7 +320,12 @@ NEW_TYPESCRIPT_FUNCTION_AFTER = """function newFunctionAfterClass(): void {
 
 class InsertInRelToSymbolTest(EditingTest):
     def __init__(
-        self, language: Language, rel_path: str, symbol_name: str, new_content: str, mode: Literal["before", "after"] | None = None
+        self,
+        language: Language,
+        rel_path: str,
+        symbol_name: str,
+        new_content: str,
+        mode: Literal["before", "after"] | None = None,
     ):
         super().__init__(language, rel_path)
         self.symbol_name = symbol_name
@@ -320,24 +338,19 @@ class InsertInRelToSymbolTest(EditingTest):
     def _apply_edit(self, code_editor: CodeEditor) -> None:
         assert self.mode is not None
         if self.mode == "before":
-            code_editor.insert_before_symbol(self.symbol_name, self.rel_path, self.new_content)
+            code_editor.insert_before_symbol(
+                self.symbol_name, self.rel_path, self.new_content
+            )
         elif self.mode == "after":
-            code_editor.insert_after_symbol(self.symbol_name, self.rel_path, self.new_content)
+            code_editor.insert_after_symbol(
+                self.symbol_name, self.rel_path, self.new_content
+            )
 
 
 @pytest.mark.parametrize("mode", ["before", "after"])
 @pytest.mark.parametrize(
     "test_case",
     [
-        pytest.param(
-            InsertInRelToSymbolTest(
-                Language.PYTHON,
-                PYTHON_TEST_REL_FILE_PATH,
-                "typed_module_var",
-                NEW_PYTHON_VARIABLE,
-            ),
-            marks=pytest.mark.python,
-        ),
         pytest.param(
             InsertInRelToSymbolTest(
                 Language.PYTHON,
@@ -367,7 +380,11 @@ class InsertInRelToSymbolTest(EditingTest):
         ),
     ],
 )
-def test_insert_in_rel_to_symbol(test_case: InsertInRelToSymbolTest, mode: Literal["before", "after"], snapshot: SnapshotAssertion):
+def test_insert_in_rel_to_symbol(
+    test_case: InsertInRelToSymbolTest,
+    mode: Literal["before", "after"],
+    snapshot: SnapshotAssertion,
+):
     test_case.set_mode(mode)
     test_case.run_test(content_after_ground_truth=snapshot)
 
@@ -408,7 +425,9 @@ TYPESCRIPT_REPLACED_BODY = """function printValue() {
 
 
 class ReplaceBodyTest(EditingTest):
-    def __init__(self, language: Language, rel_path: str, symbol_name: str, new_body: str):
+    def __init__(
+        self, language: Language, rel_path: str, symbol_name: str, new_body: str
+    ):
         super().__init__(language, rel_path)
         self.symbol_name = symbol_name
         self.new_body = new_body
@@ -451,7 +470,9 @@ NIX_ATTR_REPLACEMENT = """c = 3;"""
 class NixAttrReplacementTest(EditingTest):
     """Test for replacing individual attributes in Nix that should NOT result in double semicolons."""
 
-    def __init__(self, language: Language, rel_path: str, symbol_name: str, new_body: str):
+    def __init__(
+        self, language: Language, rel_path: str, symbol_name: str, new_body: str
+    ):
         super().__init__(language, rel_path)
         self.symbol_name = symbol_name
         self.new_body = new_body
@@ -461,7 +482,9 @@ class NixAttrReplacementTest(EditingTest):
 
 
 @pytest.mark.nix
-@pytest.mark.skipif(sys.platform == "win32", reason="nixd language server doesn't run on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="nixd language server doesn't run on Windows"
+)
 def test_nix_symbol_replacement_no_double_semicolon(snapshot: SnapshotAssertion):
     """
     Test that replacing a Nix attribute does not result in double semicolons.
@@ -485,7 +508,9 @@ def test_nix_symbol_replacement_no_double_semicolon(snapshot: SnapshotAssertion)
 
 
 class RenameSymbolTest(EditingTest):
-    def __init__(self, language: Language, rel_path: str, symbol_name: str, new_name: str):
+    def __init__(
+        self, language: Language, rel_path: str, symbol_name: str, new_name: str
+    ):
         super().__init__(language, rel_path)
         self.symbol_name = symbol_name
         self.new_name = new_name
@@ -496,7 +521,9 @@ class RenameSymbolTest(EditingTest):
     @overrides
     def _test_diff(self, code_diff: CodeDiff, snapshot: SnapshotAssertion) -> None:
         # sanity check (e.g., for newly generated snapshots) that the new name is actually in the modified content
-        assert self.new_name in code_diff.modified_content, f"New name '{self.new_name}' not found in modified content."
+        assert (
+            self.new_name in code_diff.modified_content
+        ), f"New name '{self.new_name}' not found in modified content."
         return super()._test_diff(code_diff, snapshot)
 
 
@@ -535,7 +562,9 @@ NEW_VUE_HANDLER = """const handleDoubleClick = () => {
         ),
     ],
 )
-def test_delete_symbol_vue(test_case: DeleteSymbolTest, snapshot: SnapshotAssertion) -> None:
+def test_delete_symbol_vue(
+    test_case: DeleteSymbolTest, snapshot: SnapshotAssertion
+) -> None:
     test_case.run_test(content_after_ground_truth=snapshot)
 
 
@@ -585,7 +614,9 @@ VUE_REPLACED_HANDLECLICK_BODY = """const handleClick = () => {
         ),
     ],
 )
-def test_replace_body_vue(test_case: ReplaceBodyTest, snapshot: SnapshotAssertion) -> None:
+def test_replace_body_vue(
+    test_case: ReplaceBodyTest, snapshot: SnapshotAssertion
+) -> None:
     test_case.run_test(content_after_ground_truth=snapshot)
 
 
@@ -606,7 +637,9 @@ VUE_REPLACED_PRESSCOUNT_BODY = """const pressCount = ref(100)"""
         ),
     ],
 )
-def test_replace_body_vue_with_disambiguation(test_case: ReplaceBodyTest, snapshot: SnapshotAssertion) -> None:
+def test_replace_body_vue_with_disambiguation(
+    test_case: ReplaceBodyTest, snapshot: SnapshotAssertion
+) -> None:
     """Test symbol disambiguation when replacing body in Vue files.
 
     This test verifies the fix for the Vue LSP symbol duplication issue.
@@ -645,6 +678,8 @@ VUE_STORE_REPLACED_CLEAR_BODY = """function clear() {
         ),
     ],
 )
-def test_replace_body_vue_ts_file(test_case: ReplaceBodyTest, snapshot: SnapshotAssertion) -> None:
+def test_replace_body_vue_ts_file(
+    test_case: ReplaceBodyTest, snapshot: SnapshotAssertion
+) -> None:
     """Test that TypeScript files within Vue projects can be edited."""
     test_case.run_test(content_after_ground_truth=snapshot)

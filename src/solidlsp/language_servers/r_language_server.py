@@ -2,7 +2,6 @@ import logging
 import os
 import pathlib
 import subprocess
-import threading
 from typing import Any
 
 from overrides import override
@@ -38,13 +37,22 @@ class RLanguageServer(SolidLanguageServer):
         """Check if R and languageserver are available."""
         try:
             # Check R installation
-            result = subprocess.run(["R", "--version"], capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                ["R", "--version"], capture_output=True, text=True, check=False
+            )
             if result.returncode != 0:
                 raise RuntimeError("R is not installed or not in PATH")
 
             # Check languageserver package
             result = subprocess.run(
-                ["R", "--vanilla", "--quiet", "--slave", "-e", "if (!require('languageserver', quietly=TRUE)) quit(status=1)"],
+                [
+                    "R",
+                    "--vanilla",
+                    "--quiet",
+                    "--slave",
+                    "-e",
+                    "if (!require('languageserver', quietly=TRUE)) quit(status=1)",
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -56,9 +64,16 @@ class RLanguageServer(SolidLanguageServer):
                 )
 
         except FileNotFoundError:
-            raise RuntimeError("R is not installed. Please install R from https://www.r-project.org/")
+            raise RuntimeError(
+                "R is not installed. Please install R from https://www.r-project.org/"
+            )
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         # Check R installation
         self._check_r_installation()
 
@@ -67,8 +82,13 @@ class RLanguageServer(SolidLanguageServer):
         # Set specific options to improve parsing stability
         r_cmd = 'R --vanilla --quiet --slave -e "options(languageserver.debug_mode = FALSE); languageserver::run()"'
 
-        super().__init__(config, repository_root_path, ProcessLaunchInfo(cmd=r_cmd, cwd=repository_root_path), "r", solidlsp_settings)
-        self.server_ready = threading.Event()
+        super().__init__(
+            config,
+            repository_root_path,
+            ProcessLaunchInfo(cmd=r_cmd, cwd=repository_root_path),
+            "r",
+            solidlsp_settings,
+        )
 
     @staticmethod
     def _get_initialize_params(repository_absolute_path: str) -> InitializeParams:
@@ -89,7 +109,10 @@ class RLanguageServer(SolidLanguageServer):
                             "preselectSupport": True,
                         },
                     },
-                    "hover": {"dynamicRegistration": True, "contentFormat": ["markdown", "plaintext"]},
+                    "hover": {
+                        "dynamicRegistration": True,
+                        "contentFormat": ["markdown", "plaintext"],
+                    },
                     "definition": {"dynamicRegistration": True},
                     "references": {"dynamicRegistration": True},
                     "documentSymbol": {
@@ -158,7 +181,5 @@ class RLanguageServer(SolidLanguageServer):
             log.info("R LSP definition provider available")
 
         self.server.notify.initialized({})
-        self.completions_available.set()
 
         # R Language Server is ready after initialization
-        self.server_ready.set()

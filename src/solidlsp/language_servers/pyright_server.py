@@ -30,7 +30,12 @@ class PyrightServer(SolidLanguageServer):
     Contains various configurations and settings specific to Python.
     """
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         """
         Creates a PyrightServer instance. This class is not meant to be instantiated directly.
         Use LanguageServer.create() instead.
@@ -94,8 +99,16 @@ class PyrightServer(SolidLanguageServer):
                     "executeCommand": {"dynamicRegistration": True},
                 },
                 "textDocument": {
-                    "synchronization": {"dynamicRegistration": True, "willSave": True, "willSaveWaitUntil": True, "didSave": True},
-                    "hover": {"dynamicRegistration": True, "contentFormat": ["markdown", "plaintext"]},
+                    "synchronization": {
+                        "dynamicRegistration": True,
+                        "willSave": True,
+                        "willSaveWaitUntil": True,
+                        "didSave": True,
+                    },
+                    "hover": {
+                        "dynamicRegistration": True,
+                        "contentFormat": ["markdown", "plaintext"],
+                    },
                     "signatureHelp": {
                         "dynamicRegistration": True,
                         "signatureInformation": {
@@ -114,7 +127,10 @@ class PyrightServer(SolidLanguageServer):
                 },
             },
             "workspaceFolders": [
-                {"uri": pathlib.Path(repository_absolute_path).as_uri(), "name": os.path.basename(repository_absolute_path)}
+                {
+                    "uri": pathlib.Path(repository_absolute_path).as_uri(),
+                    "name": os.path.basename(repository_absolute_path),
+                }
             ],
         }
 
@@ -158,7 +174,58 @@ class PyrightServer(SolidLanguageServer):
                 log.info("Pyright workspace scanning complete")
                 self.found_source_files = True
                 self.analysis_complete.set()
-                self.completions_available.set()
+
+        def handle_pyright_progress_notification(
+            progress_kind: str, params: object | None
+        ) -> None:
+            """Tracks Pyright-specific progress notifications.
+
+            Pyright can emit custom progress notifications instead of only using
+            ``$/progress``. Handling them avoids noisy unhandled-method warnings
+            and provides an additional signal that initial analysis has quiesced.
+            """
+            # normalizing the notification payload
+            message_text = ""
+            percentage: object | None = None
+            if isinstance(params, dict):
+                raw_message = params.get("message")
+                message_text = "" if raw_message is None else str(raw_message)
+                percentage = params.get("percentage")
+            elif params is not None:
+                message_text = str(params)
+
+            progress_label = (
+                f"{message_text} ({percentage}%)"
+                if percentage is not None
+                else message_text
+            )
+
+            # logging the progress transition
+            if progress_kind == "begin":
+                log.info("Pyright progress started: %s", progress_label)
+                return
+
+            if progress_kind == "report":
+                log.debug("Pyright progress update: %s", progress_label)
+                return
+
+            log.info("Pyright progress finished: %s", progress_label)
+            self.analysis_complete.set()
+
+        def pyright_begin_progress(params: object | None) -> None:
+            """Handles the ``pyright/beginProgress`` notification."""
+            # delegating to the shared progress handler
+            handle_pyright_progress_notification("begin", params)
+
+        def pyright_report_progress(params: object | None) -> None:
+            """Handles the ``pyright/reportProgress`` notification."""
+            # delegating to the shared progress handler
+            handle_pyright_progress_notification("report", params)
+
+        def pyright_end_progress(params: object | None) -> None:
+            """Handles the ``pyright/endProgress`` notification."""
+            # delegating to the shared progress handler
+            handle_pyright_progress_notification("end", params)
 
         def check_experimental_status(params: dict) -> None:
             """
@@ -168,17 +235,23 @@ class PyrightServer(SolidLanguageServer):
                 log.info("Received experimental/serverStatus with quiescent=true")
                 if not self.found_source_files:
                     self.analysis_complete.set()
-                    self.completions_available.set()
 
         # Set up notification handlers
         self.server.on_request("client/registerCapability", do_nothing)
         self.server.on_notification("language/status", do_nothing)
         self.server.on_notification("window/logMessage", window_log_message)
-        self.server.on_request("workspace/executeClientCommand", execute_client_command_handler)
+        self.server.on_request(
+            "workspace/executeClientCommand", execute_client_command_handler
+        )
         self.server.on_notification("$/progress", do_nothing)
+        self.server.on_notification("pyright/beginProgress", pyright_begin_progress)
+        self.server.on_notification("pyright/reportProgress", pyright_report_progress)
+        self.server.on_notification("pyright/endProgress", pyright_end_progress)
         self.server.on_notification("textDocument/publishDiagnostics", do_nothing)
         self.server.on_notification("language/actionableNotification", do_nothing)
-        self.server.on_notification("experimental/serverStatus", check_experimental_status)
+        self.server.on_notification(
+            "experimental/serverStatus", check_experimental_status
+        )
 
         log.info("Starting pyright-langserver server process")
         self.server.start()
@@ -186,7 +259,9 @@ class PyrightServer(SolidLanguageServer):
         # Send proper initialization parameters
         initialize_params = self._get_initialize_params(self.repository_root_path)
 
-        log.info("Sending initialize request from LSP client to pyright server and awaiting response")
+        log.info(
+            "Sending initialize request from LSP client to pyright server and awaiting response"
+        )
         init_response = self.server.send.initialize(initialize_params)
         log.info(f"Received initialize response from pyright server: {init_response}")
 
@@ -204,7 +279,8 @@ class PyrightServer(SolidLanguageServer):
         if self.analysis_complete.wait(timeout=5.0):
             log.info("Pyright initial analysis complete, server ready")
         else:
-            log.warning("Timeout waiting for Pyright analysis completion, proceeding anyway")
+            log.warning(
+                "Timeout waiting for Pyright analysis completion, proceeding anyway"
+            )
             # Fallback: assume analysis is complete after timeout
             self.analysis_complete.set()
-            self.completions_available.set()

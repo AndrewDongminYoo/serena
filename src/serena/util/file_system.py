@@ -55,7 +55,9 @@ def scan_directory(
                         try:
                             result_path = os.path.relpath(entry_path, rel_base)
                         except:
-                            log.debug(f"Skipping entry due to relative path conversion error: {entry.path}")
+                            log.debug(
+                                f"Skipping entry due to relative path conversion error: {entry.path}"
+                            )
                             continue
                     else:
                         result_path = entry_path
@@ -78,11 +80,16 @@ def scan_directory(
                                 directories.extend(sub_result.directories)
                 except PermissionError as ex:
                     # Skip files/directories that cannot be accessed due to permission issues
-                    log.debug(f"Skipping entry due to permission error: {entry.path}", exc_info=ex)
+                    log.debug(
+                        f"Skipping entry due to permission error: {entry.path}",
+                        exc_info=ex,
+                    )
                     continue
     except PermissionError as ex:
         # Skip the entire directory if it cannot be accessed
-        log.debug(f"Skipping directory due to permission error: {abs_path}", exc_info=ex)
+        log.debug(
+            f"Skipping directory due to permission error: {abs_path}", exc_info=ex
+        )
         return ScanResult([], [])
 
     return ScanResult(directories, files)
@@ -97,7 +104,10 @@ def find_all_non_ignored_files(repo_root: str) -> list[str]:
     """
     gitignore_parser = GitignoreParser(repo_root)
     _, files = scan_directory(
-        repo_root, recursive=True, is_ignored_dir=gitignore_parser.should_ignore, is_ignored_file=gitignore_parser.should_ignore
+        repo_root,
+        recursive=True,
+        is_ignored_dir=gitignore_parser.should_ignore,
+        is_ignored_file=gitignore_parser.should_ignore,
     )
     return files
 
@@ -115,7 +125,9 @@ class GitignoreSpec:
 
     def __post_init__(self) -> None:
         """Initialize the PathSpec from patterns."""
-        self.pathspec = PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, self.patterns)
+        self.pathspec = PathSpec.from_lines(
+            pathspec.patterns.GitWildMatchPattern, self.patterns
+        )
 
     def matches(self, relative_path: str) -> bool:
         """
@@ -124,7 +136,9 @@ class GitignoreSpec:
         :param relative_path: Path to check (should be relative to repo root)
         :return: True if path matches any pattern
         """
-        return match_path(relative_path, self.pathspec, root_path=os.path.dirname(self.file_path))
+        return match_path(
+            relative_path, self.pathspec, root_path=os.path.dirname(self.file_path)
+        )
 
 
 class GitignoreParser:
@@ -165,15 +179,35 @@ class GitignoreParser:
 
         def scan(abs_path: str | None) -> Iterator[str]:
             for entry in os.scandir(abs_path):
-                if entry.is_dir(follow_symlinks=follow_symlinks):
-                    queue.append(entry.path)
-                elif entry.is_file(follow_symlinks=follow_symlinks) and entry.name == ".gitignore":
-                    yield entry.path
+                try:
+                    if entry.is_dir(follow_symlinks=follow_symlinks):
+                        queue.append(entry.path)
+                    elif (
+                        entry.is_file(follow_symlinks=follow_symlinks)
+                        and entry.name == ".gitignore"
+                    ):
+                        yield entry.path
+                except PermissionError as ex:
+                    log.debug(
+                        f"Skipping entry due to permission error: {entry.path}",
+                        exc_info=ex,
+                    )
+                    continue
+                except FileNotFoundError as ex:
+                    log.debug(
+                        f"Skipping entry due to file not found error (possibly a broken link): {entry.path}",
+                        exc_info=ex,
+                    )
+                    continue
 
         while queue:
             next_abs_path = queue.pop(0)
             if next_abs_path != self.repo_root:
-                rel_path = os.path.relpath(next_abs_path, self.repo_root)
+                try:
+                    rel_path = os.path.relpath(next_abs_path, self.repo_root)
+                except ValueError:
+                    # If the path is on a different drive (Windows) or cannot be made relative for another reason, we ignore it
+                    continue
                 if self.should_ignore(rel_path):
                     continue
             yield from scan(next_abs_path)
@@ -288,7 +322,11 @@ class GitignoreParser:
             except Exception as e:
                 # If the path could not be converted to a relative path,
                 # it is outside the repository root, so we ignore it
-                log.info("Ignoring path '%s' which is outside of the repository root (%s)", path, e)
+                log.info(
+                    "Ignoring path '%s' which is outside of the repository root (%s)",
+                    path,
+                    e,
+                )
                 return True
         else:
             rel_path = path
@@ -303,7 +341,11 @@ class GitignoreParser:
         # Normalize path separators
         rel_path = rel_path.replace(os.sep, "/")
 
-        if os.path.exists(abs_path) and os.path.isdir(abs_path) and not rel_path.endswith("/"):
+        if (
+            os.path.exists(abs_path)
+            and os.path.isdir(abs_path)
+            and not rel_path.endswith("/")
+        ):
             rel_path = rel_path + "/"
 
         # Check against each ignore spec
@@ -337,6 +379,9 @@ def match_path(relative_path: str, path_spec: PathSpec, root_path: str = "") -> 
     :param root_path: the root path from which the relative path is derived
     :return:
     """
+    if str(relative_path) in {"", "."}:
+        return False
+
     normalized_path = str(relative_path).replace(os.path.sep, "/")
 
     # We can have patterns like /src/..., which would only match corresponding paths from the repo root

@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from serena.text_utils import LineType, search_files, search_text
+from serena.util.text_utils import LineType, search_files, search_text
 
 
 class TestSearchText:
@@ -19,8 +19,8 @@ class TestSearchText:
 
         assert len(matches) == 1
         assert matches[0].num_matched_lines == 1
-        assert matches[0].start_line == 3
-        assert matches[0].end_line == 3
+        assert matches[0].start_line == 2
+        assert matches[0].end_line == 2
         assert matches[0].lines[0].line_content.strip() == 'print("Hello, World!")'
 
     def test_search_text_with_regex_pattern(self):
@@ -85,7 +85,9 @@ class TestSearchText:
         """
 
         # Search with context lines
-        matches = search_text("return", content=content, context_lines_before=1, context_lines_after=1)
+        matches = search_text(
+            "return", content=content, context_lines_before=1, context_lines_after=1
+        )
 
         assert len(matches) == 3
 
@@ -123,7 +125,9 @@ class TestSearchText:
         assert "if n <= 1:" in multiline_match.lines[0].line_content
 
         # All matched lines should have match_type == LineType.MATCH
-        match_lines = [line for line in multiline_match.lines if line.match_type == LineType.MATCH]
+        match_lines = [
+            line for line in multiline_match.lines if line.match_type == LineType.MATCH
+        ]
         assert len(match_lines) >= 3
 
     def test_search_text_with_glob_pattern(self):
@@ -176,7 +180,8 @@ class TestSearchText:
             line.line_content
             for match in matches
             for line in match.lines
-            if line.match_type == LineType.MATCH and "isinstance(item," in line.line_content
+            if line.match_type == LineType.MATCH
+            and "isinstance(item," in line.line_content
         ]
         assert len(instance_matches) >= 2
         assert any("isinstance(item, dict)" in line for line in instance_matches)
@@ -227,28 +232,132 @@ class TestSearchFiles:
         [
             # Basic cases
             (["a.py", "b.txt"], "match", None, None, ["a.py", "b.txt"], "No filters"),
-            (["a.py", "b.txt"], "match", "*.py", None, ["a.py"], "Include only .py files"),
+            (
+                ["a.py", "b.txt"],
+                "match",
+                "*.py",
+                None,
+                ["a.py"],
+                "Include only .py files",
+            ),
             (["a.py", "b.txt"], "match", None, "*.txt", ["a.py"], "Exclude .txt files"),
-            (["a.py", "b.txt", "c.py"], "match", "*.py", "c.*", ["a.py"], "Include .py, exclude c.*"),
+            (
+                ["a.py", "b.txt", "c.py"],
+                "match",
+                "*.py",
+                "c.*",
+                ["a.py"],
+                "Include .py, exclude c.*",
+            ),
             # Directory matching - Using pathspec patterns
-            (["main.c", "test/main.c"], "match", "test/*", None, ["test/main.c"], "Include files in test/ subdir"),
-            (["data/a.csv", "data/b.log"], "match", "data/*", "*.log", ["data/a.csv"], "Include data/*, exclude *.log"),
-            (["src/a.py", "tests/b.py"], "match", "src/**", "tests/**", ["src/a.py"], "Include src/**, exclude tests/**"),
-            (["src/mod/a.py", "tests/b.py"], "match", "**/*.py", "tests/**", ["src/mod/a.py"], "Include **/*.py, exclude tests/**"),
-            (["file.py", "dir/file.py"], "match", "dir/*.py", None, ["dir/file.py"], "Include files directly in dir"),
-            (["file.py", "dir/sub/file.py"], "match", "dir/**/*.py", None, ["dir/sub/file.py"], "Include files recursively in dir"),
+            (
+                ["main.c", "test/main.c"],
+                "match",
+                "test/*",
+                None,
+                ["test/main.c"],
+                "Include files in test/ subdir",
+            ),
+            (
+                ["data/a.csv", "data/b.log"],
+                "match",
+                "data/*",
+                "*.log",
+                ["data/a.csv"],
+                "Include data/*, exclude *.log",
+            ),
+            (
+                ["src/a.py", "tests/b.py"],
+                "match",
+                "src/**",
+                "tests/**",
+                ["src/a.py"],
+                "Include src/**, exclude tests/**",
+            ),
+            (
+                ["src/mod/a.py", "tests/b.py"],
+                "match",
+                "**/*.py",
+                "tests/**",
+                ["src/mod/a.py"],
+                "Include **/*.py, exclude tests/**",
+            ),
+            (
+                ["file.py", "dir/file.py"],
+                "match",
+                "dir/*.py",
+                None,
+                ["dir/file.py"],
+                "Include files directly in dir",
+            ),
+            (
+                ["file.py", "dir/sub/file.py"],
+                "match",
+                "dir/**/*.py",
+                None,
+                ["dir/sub/file.py"],
+                "Include files recursively in dir",
+            ),
             # Overlap and edge cases
-            (["file.py", "dir/file.py"], "match", "*.py", "dir/*", ["file.py"], "Include *.py, exclude files directly in dir"),
-            (["root.py", "adir/a.py", "bdir/b.py"], "match", "a*/*.py", None, ["adir/a.py"], "Include files in dirs starting with 'a'"),
-            (["a.txt", "b.log"], "match", "*.py", None, [], "No files match include pattern"),
-            (["a.py", "b.py"], "match", None, "*.py", [], "All files match exclude pattern"),
-            (["a.py", "b.py"], "match", "a.*", "*.py", [], "Include a.* but exclude *.py -> empty"),
-            (["a.py", "b.py"], "match", "*.py", "b.*", ["a.py"], "Include *.py but exclude b.* -> a.py"),
+            (
+                ["file.py", "dir/file.py"],
+                "match",
+                "*.py",
+                "dir/*",
+                ["file.py"],
+                "Include *.py, exclude files directly in dir",
+            ),
+            (
+                ["root.py", "adir/a.py", "bdir/b.py"],
+                "match",
+                "a*/*.py",
+                None,
+                ["adir/a.py"],
+                "Include files in dirs starting with 'a'",
+            ),
+            (
+                ["a.txt", "b.log"],
+                "match",
+                "*.py",
+                None,
+                [],
+                "No files match include pattern",
+            ),
+            (
+                ["a.py", "b.py"],
+                "match",
+                None,
+                "*.py",
+                [],
+                "All files match exclude pattern",
+            ),
+            (
+                ["a.py", "b.py"],
+                "match",
+                "a.*",
+                "*.py",
+                [],
+                "Include a.* but exclude *.py -> empty",
+            ),
+            (
+                ["a.py", "b.py"],
+                "match",
+                "*.py",
+                "b.*",
+                ["a.py"],
+                "Include *.py but exclude b.* -> a.py",
+            ),
         ],
         ids=lambda x: x if isinstance(x, str) else "",  # Use description as test ID
     )
     def test_search_files_include_exclude(
-        self, file_paths, pattern, paths_include_glob, paths_exclude_glob, expected_matched_files, description
+        self,
+        file_paths,
+        pattern,
+        paths_include_glob,
+        paths_exclude_glob,
+        expected_matched_files,
+        description,
     ):
         """
         Test the include/exclude glob filtering logic in search_files using PathSpec patterns.
@@ -264,7 +373,9 @@ class TestSearchFiles:
         )
 
         # Extract the source file paths from the results
-        actual_matched_files = sorted([result.source_file_path for result in results if result.source_file_path])
+        actual_matched_files = sorted(
+            [result.source_file_path for result in results if result.source_file_path]
+        )
 
         # Assert that the matched files are exactly the ones expected
         assert actual_matched_files == sorted(expected_matched_files)
@@ -273,8 +384,13 @@ class TestSearchFiles:
         if expected_matched_files:
             assert len(results) == len(expected_matched_files)
             for result in results:
-                assert len(result.matched_lines) == 1  # Mock reader returns one matching line
-                assert result.matched_lines[0].line_content == "This line contains a match."
+                assert (
+                    len(result.matched_lines) == 1
+                )  # Mock reader returns one matching line
+                assert (
+                    result.matched_lines[0].line_content
+                    == "This line contains a match."
+                )
                 assert result.matched_lines[0].match_type == LineType.MATCH
 
     @pytest.mark.parametrize(
@@ -282,7 +398,11 @@ class TestSearchFiles:
         [
             # Glob patterns that were problematic with gitignore syntax
             (
-                ["src/serena/agent.py", "src/serena/process_isolated_agent.py", "test/agent.py"],
+                [
+                    "src/serena/agent.py",
+                    "src/serena/process_isolated_agent.py",
+                    "test/agent.py",
+                ],
                 "match",
                 "src/**agent.py",
                 None,
@@ -290,11 +410,19 @@ class TestSearchFiles:
                 "Glob: src/**agent.py should match files ending with agent.py under src/",
             ),
             (
-                ["src/serena/agent.py", "src/serena/process_isolated_agent.py", "other/agent.py"],
+                [
+                    "src/serena/agent.py",
+                    "src/serena/process_isolated_agent.py",
+                    "other/agent.py",
+                ],
                 "match",
                 "**agent.py",
                 None,
-                ["src/serena/agent.py", "src/serena/process_isolated_agent.py", "other/agent.py"],
+                [
+                    "src/serena/agent.py",
+                    "src/serena/process_isolated_agent.py",
+                    "other/agent.py",
+                ],
                 "Glob: **agent.py should match files ending with agent.py anywhere",
             ),
             (
@@ -322,12 +450,25 @@ class TestSearchFiles:
                 ["agent.py", "src/agent.py", "src/serena/agent.py"],
                 "Glob: **agent.py should match at root and any depth",
             ),
-            (["file.txt", "src/file.txt"], "match", "src/**", None, ["src/file.txt"], "Glob: src/** should match everything under src/"),
+            (
+                ["file.txt", "src/file.txt"],
+                "match",
+                "src/**",
+                None,
+                ["src/file.txt"],
+                "Glob: src/** should match everything under src/",
+            ),
         ],
         ids=lambda x: x if isinstance(x, str) else "",  # Use description as test ID
     )
     def test_search_files_glob_patterns(
-        self, file_paths, pattern, paths_include_glob, paths_exclude_glob, expected_matched_files, description
+        self,
+        file_paths,
+        pattern,
+        paths_include_glob,
+        paths_exclude_glob,
+        expected_matched_files,
+        description,
     ):
         """
         Test glob patterns that were problematic with the previous gitignore-based implementation.
@@ -343,7 +484,9 @@ class TestSearchFiles:
         )
 
         # Extract the source file paths from the results
-        actual_matched_files = sorted([result.source_file_path for result in results if result.source_file_path])
+        actual_matched_files = sorted(
+            [result.source_file_path for result in results if result.source_file_path]
+        )
 
         # Assert that the matched files are exactly the ones expected
         assert actual_matched_files == sorted(
@@ -354,8 +497,13 @@ class TestSearchFiles:
         if expected_matched_files:
             assert len(results) == len(expected_matched_files)
             for result in results:
-                assert len(result.matched_lines) == 1  # Mock reader returns one matching line
-                assert result.matched_lines[0].line_content == "This line contains a match."
+                assert (
+                    len(result.matched_lines) == 1
+                )  # Mock reader returns one matching line
+                assert (
+                    result.matched_lines[0].line_content
+                    == "This line contains a match."
+                )
                 assert result.matched_lines[0].match_type == LineType.MATCH
 
     @pytest.mark.parametrize(
@@ -410,7 +558,13 @@ class TestSearchFiles:
         ids=lambda x: x if isinstance(x, str) else "",
     )
     def test_search_files_with_brace_expansion(
-        self, file_paths, pattern, paths_include_glob, paths_exclude_glob, expected_matched_files, description
+        self,
+        file_paths,
+        pattern,
+        paths_include_glob,
+        paths_exclude_glob,
+        expected_matched_files,
+        description,
     ):
         """Test search_files with glob patterns containing brace expansions."""
         results = search_files(
@@ -421,8 +575,12 @@ class TestSearchFiles:
             paths_exclude_glob=paths_exclude_glob,
         )
 
-        actual_matched_files = sorted([result.source_file_path for result in results if result.source_file_path])
-        assert actual_matched_files == sorted(expected_matched_files), f"Test failed: {description}"
+        actual_matched_files = sorted(
+            [result.source_file_path for result in results if result.source_file_path]
+        )
+        assert actual_matched_files == sorted(
+            expected_matched_files
+        ), f"Test failed: {description}"
 
     def test_search_files_no_pattern_match_in_content(self):
         """Test that no results are returned if the pattern doesn't match the file content, even if files pass filters."""
@@ -435,7 +593,9 @@ class TestSearchFiles:
             paths_include_glob=None,  # Both files would pass filters
             paths_exclude_glob=None,
         )
-        assert len(results) == 0, "Should not find matches if pattern doesn't match content"
+        assert (
+            len(results) == 0
+        ), "Should not find matches if pattern doesn't match content"
 
     def test_search_files_regex_pattern_with_filters(self):
         """Test using a regex pattern works correctly along with include/exclude filters."""
@@ -464,8 +624,13 @@ class TestSearchFiles:
         # Expected: a.py included, b.py excluded by glob, c.txt excluded by glob
         # a.py has two matches for the regex pattern
         assert len(results) == 2, "Expected 2 matches only from a.py"
-        actual_matched_files = sorted([result.source_file_path for result in results if result.source_file_path])
-        assert actual_matched_files == ["a.py", "a.py"], "Both matches should be from a.py"
+        actual_matched_files = sorted(
+            [result.source_file_path for result in results if result.source_file_path]
+        )
+        assert actual_matched_files == [
+            "a.py",
+            "a.py",
+        ], "Both matches should be from a.py"
         # Check the content of the matched lines
         assert results[0].matched_lines[0].line_content == "File A: value=123"
         assert results[1].matched_lines[0].line_content == "File A: value=456"
@@ -498,11 +663,15 @@ class TestSearchFiles:
         result = results[0]
         assert result.source_file_path == "include_me.txt"
         assert len(result.lines) == 3, "Expected 3 lines (1 before, 1 match, 1 after)"
-        assert result.lines[0].line_content == "Line before 2", "Incorrect 'before' context line"
+        assert (
+            result.lines[0].line_content == "Line before 2"
+        ), "Incorrect 'before' context line"
         assert result.lines[0].match_type == LineType.BEFORE_MATCH
         assert result.lines[1].line_content == "MATCH HERE", "Incorrect 'match' line"
         assert result.lines[1].match_type == LineType.MATCH
-        assert result.lines[2].line_content == "Line after 1", "Incorrect 'after' context line"
+        assert (
+            result.lines[2].line_content == "Line after 1"
+        ), "Incorrect 'after' context line"
         assert result.lines[2].match_type == LineType.AFTER_MATCH
 
 
@@ -545,7 +714,7 @@ class TestGlobMatch:
     )
     def test_glob_match(self, pattern, path, expected):
         """Test glob_match function with various patterns."""
-        from src.serena.text_utils import glob_match
+        from serena.util.text_utils import glob_match
 
         assert glob_match(pattern, path) == expected
 
@@ -561,7 +730,10 @@ class TestExpandBraces:
             # No braces
             ("src/*.py", ["src/*.py"]),
             # Multiple brace sets
-            ("src/{a,b}/{c,d}.py", ["src/a/c.py", "src/a/d.py", "src/b/c.py", "src/b/d.py"]),
+            (
+                "src/{a,b}/{c,d}.py",
+                ["src/a/c.py", "src/a/d.py", "src/b/c.py", "src/b/d.py"],
+            ),
             # Empty string
             ("", [""]),
             # Braces with empty elements
@@ -572,6 +744,6 @@ class TestExpandBraces:
     )
     def test_expand_braces(self, pattern, expected):
         """Test brace expansion for glob patterns."""
-        from serena.text_utils import expand_braces
+        from serena.util.text_utils import expand_braces
 
         assert sorted(expand_braces(pattern)) == sorted(expected)

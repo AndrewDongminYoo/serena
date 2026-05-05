@@ -3,7 +3,7 @@ The Serena Model Context Protocol (MCP) Server
 """
 
 import sys
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass
@@ -21,9 +21,9 @@ from serena.agent import (
     SerenaAgent,
     SerenaConfig,
 )
-from serena.config.context_mode import SerenaAgentContext, SerenaAgentMode
-from serena.config.serena_config import LanguageBackend
-from serena.constants import DEFAULT_CONTEXT, DEFAULT_MODES, SERENA_LOG_FORMAT
+from serena.config.context_mode import SerenaAgentContext
+from serena.config.serena_config import LanguageBackend, ModeSelectionDefinition
+from serena.constants import DEFAULT_CONTEXT, SERENA_LOG_FORMAT
 from serena.tools import Tool
 from serena.util.exception import show_fatal_exception_safe
 from serena.util.logging import MemoryLogHandler
@@ -35,7 +35,9 @@ def configure_logging(*args, **kwargs) -> None:  # type: ignore
     # We only do something here if logging has not yet been configured.
     # Normally, logging is configured in the MCP server startup script.
     if not logging.is_enabled():
-        logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=SERENA_LOG_FORMAT)
+        logging.basicConfig(
+            level=logging.INFO, stream=sys.stderr, format=SERENA_LOG_FORMAT
+        )
 
 
 # patch the logging configuration function in fastmcp, because it's hard-coded and broken
@@ -52,7 +54,12 @@ class SerenaMCPFactory:
     Factory for the creation of the Serena MCP server with an associated SerenaAgent.
     """
 
-    def __init__(self, context: str = DEFAULT_CONTEXT, project: str | None = None, memory_log_handler: MemoryLogHandler | None = None):
+    def __init__(
+        self,
+        context: str = DEFAULT_CONTEXT,
+        project: str | None = None,
+        memory_log_handler: MemoryLogHandler | None = None,
+    ):
         """
         :param context: The context name or path to context file
         :param project: Either an absolute path to the project directory or a name of an already registered project.
@@ -147,7 +154,12 @@ class SerenaMCPFactory:
                         node[key] = simplified
 
             # ---- recurse into known schema containers ----
-            for child_key in ("properties", "patternProperties", "definitions", "$defs"):
+            for child_key in (
+                "properties",
+                "patternProperties",
+                "definitions",
+                "$defs",
+            ):
                 if child_key in node and isinstance(node[child_key], dict):
                     for k, v in list(node[child_key].items()):
                         node[child_key][k] = walk(v)
@@ -193,7 +205,9 @@ class SerenaMCPFactory:
 
         # Mount the tool description as a combination of the docstring description and
         # the return value description, if it exists.
-        overridden_description = tool.agent.get_context().tool_description_overrides.get(func_name, None)
+        overridden_description = (
+            tool.agent.get_context().tool_description_overrides.get(func_name, None)
+        )
 
         if overridden_description is not None:
             func_doc = overridden_description
@@ -204,7 +218,9 @@ class SerenaMCPFactory:
         func_doc = func_doc.strip().strip(".")
         if func_doc:
             func_doc += "."
-        if docstring.returns and (docstring_returns_descr := docstring.returns.description):
+        if docstring.returns and (
+            docstring_returns_descr := docstring.returns.description
+        ):
             # Only add a space before "Returns" if func_doc is not empty
             prefix = " " if func_doc else ""
             func_doc = f"{func_doc}{prefix}Returns {docstring_returns_descr.strip().strip('.')}."
@@ -251,18 +267,30 @@ class SerenaMCPFactory:
         yield from self.agent.get_exposed_tool_instances()
 
     # noinspection PyProtectedMember
-    def _set_mcp_tools(self, mcp: FastMCP, openai_tool_compatible: bool = False) -> None:
+    def _set_mcp_tools(
+        self, mcp: FastMCP, openai_tool_compatible: bool = False
+    ) -> None:
         """Update the tools in the MCP server"""
         if mcp is not None:
             mcp._tool_manager._tools = {}
             for tool in self._iter_tools():
-                mcp_tool = self.make_mcp_tool(tool, openai_tool_compatible=openai_tool_compatible)
+                mcp_tool = self.make_mcp_tool(
+                    tool, openai_tool_compatible=openai_tool_compatible
+                )
                 mcp._tool_manager._tools[tool.get_name()] = mcp_tool
-            log.info(f"Starting MCP server with {len(mcp._tool_manager._tools)} tools: {list(mcp._tool_manager._tools.keys())}")
+            log.info(
+                f"Starting MCP server with {len(mcp._tool_manager._tools)} tools: {list(mcp._tool_manager._tools.keys())}"
+            )
 
-    def _create_serena_agent(self, serena_config: SerenaConfig, modes: list[SerenaAgentMode]) -> SerenaAgent:
+    def _create_serena_agent(
+        self, serena_config: SerenaConfig, modes: ModeSelectionDefinition | None = None
+    ) -> SerenaAgent:
         return SerenaAgent(
-            project=self.project, serena_config=serena_config, context=self.context, modes=modes, memory_log_handler=self.memory_log_handler
+            project=self.project,
+            serena_config=serena_config,
+            context=self.context,
+            modes=modes,
+            memory_log_handler=self.memory_log_handler,
         )
 
     def _create_default_serena_config(self) -> SerenaConfig:
@@ -270,14 +298,16 @@ class SerenaMCPFactory:
 
     def create_mcp_server(
         self,
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",
         port: int = 8000,
-        modes: Sequence[str] = DEFAULT_MODES,
+        mode_selection_def: ModeSelectionDefinition | None = None,
         language_backend: LanguageBackend | None = None,
         enable_web_dashboard: bool | None = None,
         enable_gui_log_window: bool | None = None,
         open_web_dashboard: bool | None = None,
-        log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = None,
+        log_level: (
+            Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None
+        ) = None,
         trace_lsp_communication: bool | None = None,
         tool_timeout: float | None = None,
     ) -> FastMCP:
@@ -286,7 +316,7 @@ class SerenaMCPFactory:
 
         :param host: The host to bind to
         :param port: The port to bind to
-        :param modes: List of mode names or paths to mode files
+        :param mode_selection_def: the mode selection definition to apply
         :param language_backend: the language backend to use, overriding the configuration setting.
         :param enable_web_dashboard: Whether to enable the web dashboard. If not specified, will take the value from the serena configuration.
         :param enable_gui_log_window: Whether to enable the GUI log window. It currently does not work on macOS, and setting this to True will be ignored then.
@@ -305,11 +335,14 @@ class SerenaMCPFactory:
             if enable_web_dashboard is not None:
                 config.web_dashboard = enable_web_dashboard
             if enable_gui_log_window is not None:
-                config.gui_log_window_enabled = enable_gui_log_window
+                config.gui_log_window = enable_gui_log_window
             if open_web_dashboard is not None:
                 config.web_dashboard_open_on_launch = open_web_dashboard
             if log_level is not None:
-                log_level = cast(Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], log_level.upper())
+                log_level = cast(
+                    Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                    log_level.upper(),
+                )
                 config.log_level = logging.getLevelNamesMapping()[log_level]
             if trace_lsp_communication is not None:
                 config.trace_lsp_communication = trace_lsp_communication
@@ -318,8 +351,7 @@ class SerenaMCPFactory:
             if language_backend is not None:
                 config.language_backend = language_backend
 
-            modes_instances = [SerenaAgentMode.load(mode) for mode in modes]
-            self.agent = self._create_serena_agent(config, modes_instances)
+            self.agent = self._create_serena_agent(config, mode_selection_def)
 
         except Exception as e:
             show_fatal_exception_safe(e)
@@ -330,17 +362,34 @@ class SerenaMCPFactory:
         # retain only FASTMCP_ prefix for already set environment variables.
         Settings.model_config = SettingsConfigDict(env_prefix="FASTMCP_")
         instructions = self._get_initial_instructions()
-        mcp = FastMCP(lifespan=self.server_lifespan, host=host, port=port, instructions=instructions)
+        log.info("MCP server initial instructions:\n%s", instructions)
+        mcp = FastMCP(
+            name="Serena",
+            lifespan=self.server_lifespan,
+            website_url="https://oraios.github.io/serena",
+            host=host,
+            port=port,
+            instructions=instructions,
+        )
         return mcp
 
     @asynccontextmanager
     async def server_lifespan(self, mcp_server: FastMCP) -> AsyncIterator[None]:
         """Manage server startup and shutdown lifecycle."""
-        openai_tool_compatible = self.context.name in ["chatgpt", "codex", "oaicompat-agent"]
+        openai_tool_compatible = self.context.name in [
+            "chatgpt",
+            "codex",
+            "oaicompat-agent",
+        ]
         self._set_mcp_tools(mcp_server, openai_tool_compatible=openai_tool_compatible)
         log.info("MCP server lifetime setup complete")
-        yield
+        try:
+            yield
+        finally:
+            log.info("MCP server shutting down")
+            if self.agent is not None:
+                self.agent.on_shutdown()
 
     def _get_initial_instructions(self) -> str:
         assert self.agent is not None
-        return self.agent.create_system_prompt()
+        return self.agent.create_connection_prompt()

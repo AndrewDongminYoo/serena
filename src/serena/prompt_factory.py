@@ -13,4 +13,6 @@ class SerenaPromptFactory(PromptFactory):
     def __init__(self) -> None:
         user_templates_dir = SerenaPaths().user_prompt_templates_dir
         os.makedirs(user_templates_dir, exist_ok=True)
-        super().__init__(prompts_dir=[user_templates_dir, PROMPT_TEMPLATES_DIR_INTERNAL])
+        super().__init__(
+            prompts_dir=[user_templates_dir, PROMPT_TEMPLATES_DIR_INTERNAL]
+        )

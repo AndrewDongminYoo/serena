@@ -41,7 +41,9 @@ class UserManager:
         self.active_users: dict[str, User] = {}
         self.user_stats: dict[str, UserStats] = {}
 
-    def register_user(self, name: str, email: str, roles: list[str] | None = None) -> User:
+    def register_user(
+        self, name: str, email: str, roles: list[str] | None = None
+    ) -> User:
         """Register a new user."""
         logger.info(f"Registering new user: {name} ({email})")
         user = self.service.create_user(name=name, email=email, roles=roles)
@@ -60,7 +62,9 @@ class UserManager:
             self.active_users[user.id] = user
         return user
 
-    def update_user_stats(self, user_id: str, login_count: int, days_since_active: int) -> None:
+    def update_user_stats(
+        self, user_id: str, login_count: int, days_since_active: int
+    ) -> None:
         """Update statistics for a user."""
         if user_id not in self.user_stats:
             self.user_stats[user_id] = UserStats(user_id=user_id)
@@ -76,8 +80,14 @@ class UserManager:
 
     def get_active_users(self) -> list[User]:
         """Get all active users."""
-        active_user_ids = [user_id for user_id, stats in self.user_stats.items() if stats.is_active()]
-        return [self.active_users[user_id] for user_id in active_user_ids if user_id in self.active_users]
+        active_user_ids = [
+            user_id for user_id, stats in self.user_stats.items() if stats.is_active()
+        ]
+        return [
+            self.active_users[user_id]
+            for user_id in active_user_ids
+            if user_id in self.active_users
+        ]
 
     def get_user_by_email(self, email: str) -> User | None:
         """Find a user by their email address."""
@@ -88,7 +98,11 @@ class UserManager:
 
 
 # Example function demonstrating type annotations
-def process_user_data(users: list[User], include_inactive: bool = False, transform_func: callable | None = None) -> dict[str, Any]:
+def process_user_data(
+    users: list[User],
+    include_inactive: bool = False,
+    transform_func: callable | None = None,
+) -> dict[str, Any]:
     """Process user data with optional transformations."""
     result: dict[str, Any] = {"users": [], "total": 0, "admin_count": 0}
 
@@ -128,12 +142,21 @@ def main():
     logger.info(f"Active users: {len(active_users)}")
 
     # Process user data
-    user_data = process_user_data(active_users, transform_func=lambda u: {**u, "full_name": u.get("name", "")})
+    user_data = process_user_data(
+        active_users, transform_func=lambda u: {**u, "full_name": u.get("name", "")}
+    )
 
-    logger.info(f"Processed {user_data['total']} users, {user_data['admin_count']} admins")
+    logger.info(
+        f"Processed {user_data['total']} users, {user_data['admin_count']} admins"
+    )
 
     # Example of calling create_user directly
-    external_user = create_user_object(id="ext123", name="External User", email="external@example.org", roles=["external"])
+    external_user = create_user_object(
+        id="ext123",
+        name="External User",
+        email="external@example.org",
+        roles=["external"],
+    )
     logger.info(f"Created external user: {external_user.name}")
 
 

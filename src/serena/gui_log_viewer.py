@@ -1,11 +1,11 @@
 # mypy: ignore-errors
 import logging
-import os
 import queue
 import sys
 import threading
 import tkinter as tk
 import traceback
+from collections.abc import Callable
 from enum import Enum, auto
 from pathlib import Path
 from typing import Literal
@@ -38,6 +38,7 @@ class GuiLogViewer:
         memory_log_handler: MemoryLogHandler | None = None,
         width=800,
         height=600,
+        shutdown_handler: Callable[[], None] | None = None,
     ):
         """
         :param mode: the mode; if "dashboard", run a dashboard with logs and some control options; if "error", run
@@ -57,6 +58,7 @@ class GuiLogViewer:
         self.log_thread = None
         self.menubar: tk.Menu | None = None
         self.tool_names = []  # List to store tool names for highlighting
+        self.shutdown_handler = shutdown_handler
 
         # Define colors for different log levels
         self.log_colors = {
@@ -68,9 +70,11 @@ class GuiLogViewer:
         }
 
         if memory_log_handler is not None:
-            for msg in memory_log_handler.get_log_messages():
+            for msg in memory_log_handler.get_log_messages().messages:
                 self.message_queue.put(msg)
-            memory_log_handler.add_emit_callback(lambda msg: self.message_queue.put(msg))
+            memory_log_handler.add_emit_callback(
+                lambda msg: self.message_queue.put(msg)
+            )
 
     def start(self):
         """Start the log viewer in a separate thread."""
@@ -230,7 +234,9 @@ class GuiLogViewer:
             if sys.platform == "win32":
                 import ctypes
 
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("oraios.serena")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                    "oraios.serena"
+                )
 
             self.root = tk.Tk()
             self.root.title(self.title)
@@ -272,7 +278,12 @@ class GuiLogViewer:
 
             # Create text widget with horizontal scrolling
             self.text_widget = tk.Text(
-                frame, wrap=tk.NONE, width=self.width, height=self.height, xscrollcommand=h_scrollbar.set, yscrollcommand=v_scrollbar.set
+                frame,
+                wrap=tk.NONE,
+                width=self.width,
+                height=self.height,
+                xscrollcommand=h_scrollbar.set,
+                yscrollcommand=v_scrollbar.set,
             )
             self.text_widget.grid(row=0, column=0, sticky="nsew")
             self.text_widget.configure(state=tk.DISABLED)  # Make it read-only
@@ -320,10 +331,8 @@ class GuiLogViewer:
             self.running = False
 
     def _shutdown_server(self) -> None:
-        log.info("Shutting down Serena")
-        # noinspection PyUnresolvedReferences
-        # noinspection PyProtectedMember
-        os._exit(0)
+        if self.shutdown_handler is not None:
+            self.shutdown_handler()
 
 
 class GuiLogViewerHandler(logging.Handler):
@@ -337,7 +346,9 @@ class GuiLogViewerHandler(logging.Handler):
         self,
         log_viewer: GuiLogViewer,
         level=logging.NOTSET,
-        format_string: str | None = "%(levelname)-5s %(asctime)-15s %(name)s:%(funcName)s:%(lineno)d - %(message)s",
+        format_string: (
+            str | None
+        ) = "%(levelname)-5s %(asctime)-15s %(name)s:%(funcName)s:%(lineno)d - %(message)s",
     ):
         """
         Initialize the handler with a ThreadedLogViewer instance.

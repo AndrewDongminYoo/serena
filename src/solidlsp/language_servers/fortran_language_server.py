@@ -7,12 +7,16 @@ import os
 import pathlib
 import re
 import shutil
-import threading
 
 from overrides import override
 
 from solidlsp import ls_types
-from solidlsp.ls import DocumentSymbols, LSPFileBuffer, SolidLanguageServer
+from solidlsp.ls import (
+    DocumentSymbols,
+    LSPConstants,
+    LSPFileBuffer,
+    SolidLanguageServer,
+)
 from solidlsp.ls_config import LanguageServerConfig
 from solidlsp.lsp_protocol_handler.lsp_types import InitializeParams
 from solidlsp.lsp_protocol_handler.server import ProcessLaunchInfo
@@ -102,7 +106,9 @@ class FortranLanguageServer(SolidLanguageServer):
             identifier_start = match.start(1)
         else:
             # Try standard keywords pattern
-            standard_pattern = r"^\s*(function|subroutine|module|program|interface)\s+([a-zA-Z_]\w*)"
+            standard_pattern = (
+                r"^\s*(function|subroutine|module|program|interface)\s+([a-zA-Z_]\w*)"
+            )
             match = re.match(standard_pattern, line, re.IGNORECASE)
 
             if not match:
@@ -121,14 +127,19 @@ class FortranLanguageServer(SolidLanguageServer):
             # Create corrected selectionRange
             new_sel_range = {
                 "start": {"line": start_line, "character": identifier_start},
-                "end": {"line": start_line, "character": identifier_start + len(identifier_name)},
+                "end": {
+                    "line": start_line,
+                    "character": identifier_start + len(identifier_name),
+                },
             }
 
             # Create modified symbol with corrected selectionRange
             corrected_symbol = symbol.copy()
             corrected_symbol["selectionRange"] = new_sel_range  # type: ignore[typeddict-item]
 
-            log.debug(f"Fixed fortls selectionRange for {identifier_name}: char {start_char} -> {identifier_start}")
+            log.debug(
+                f"Fixed fortls selectionRange for {identifier_name}: char {start_char} -> {identifier_start}"
+            )
 
             return corrected_symbol
 
@@ -136,7 +147,9 @@ class FortranLanguageServer(SolidLanguageServer):
         return symbol
 
     @override
-    def request_document_symbols(self, relative_file_path: str, file_buffer: LSPFileBuffer | None = None) -> DocumentSymbols:
+    def request_document_symbols(
+        self, relative_file_path: str, file_buffer: LSPFileBuffer | None = None
+    ) -> DocumentSymbols:
         # Override to fix fortls's incorrect selectionRange bug.
         #
         # fortls returns selectionRange pointing to line start (character 0) instead of the
@@ -149,25 +162,33 @@ class FortranLanguageServer(SolidLanguageServer):
         # 4. Returns corrected symbols
 
         # Get symbols from fortls (with incorrect selectionRange)
-        document_symbols = super().request_document_symbols(relative_file_path, file_buffer=file_buffer)
+        document_symbols = super().request_document_symbols(
+            relative_file_path, file_buffer=file_buffer
+        )
 
         # Get file content for parsing
         with self.open_file(relative_file_path) as file_data:
             file_content = file_data.contents
 
         # Fix selectionRange recursively for all symbols
-        def fix_symbol_and_children(symbol: ls_types.UnifiedSymbolInformation) -> ls_types.UnifiedSymbolInformation:
+        def fix_symbol_and_children(
+            symbol: ls_types.UnifiedSymbolInformation,
+        ) -> ls_types.UnifiedSymbolInformation:
             # Fix this symbol's selectionRange
             fixed = self._fix_fortls_selection_range(symbol, file_content)
 
             # Fix children recursively
             if fixed.get("children"):
-                fixed["children"] = [fix_symbol_and_children(child) for child in fixed["children"]]
+                fixed["children"] = [
+                    fix_symbol_and_children(child) for child in fixed["children"]
+                ]
 
             return fixed
 
         # Apply fix to all symbols
-        fixed_root_symbols = [fix_symbol_and_children(sym) for sym in document_symbols.root_symbols]
+        fixed_root_symbols = [
+            fix_symbol_and_children(sym) for sym in document_symbols.root_symbols
+        ]
 
         return DocumentSymbols(fixed_root_symbols)
 
@@ -176,10 +197,17 @@ class FortranLanguageServer(SolidLanguageServer):
         """Check if fortls is available."""
         fortls_path = shutil.which("fortls")
         if fortls_path is None:
-            raise RuntimeError("fortls is not installed or not in PATH.\nInstall it with: pip install fortls")
+            raise RuntimeError(
+                "fortls is not installed or not in PATH.\nInstall it with: pip install fortls"
+            )
         return fortls_path
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         # Check fortls installation
         fortls_path = self._check_fortls_installation()
 
@@ -188,9 +216,12 @@ class FortranLanguageServer(SolidLanguageServer):
         fortls_cmd = f"{fortls_path}"
 
         super().__init__(
-            config, repository_root_path, ProcessLaunchInfo(cmd=fortls_cmd, cwd=repository_root_path), "fortran", solidlsp_settings
+            config,
+            repository_root_path,
+            ProcessLaunchInfo(cmd=fortls_cmd, cwd=repository_root_path),
+            "fortran",
+            solidlsp_settings,
         )
-        self.server_ready = threading.Event()
 
     @staticmethod
     def _get_initialize_params(repository_absolute_path: str) -> InitializeParams:
@@ -211,7 +242,10 @@ class FortranLanguageServer(SolidLanguageServer):
                             "preselectSupport": True,
                         },
                     },
-                    "hover": {"dynamicRegistration": True, "contentFormat": ["markdown", "plaintext"]},
+                    "hover": {
+                        "dynamicRegistration": True,
+                        "contentFormat": ["markdown", "plaintext"],
+                    },
                     "definition": {"dynamicRegistration": True},
                     "references": {"dynamicRegistration": True},
                     "documentSymbol": {
@@ -222,6 +256,7 @@ class FortranLanguageServer(SolidLanguageServer):
                     "formatting": {"dynamicRegistration": True},
                     "rangeFormatting": {"dynamicRegistration": True},
                     "codeAction": {"dynamicRegistration": True},
+                    "publishDiagnostics": {"relatedInformation": True},
                 },
                 "workspace": {
                     "workspaceFolders": True,
@@ -283,8 +318,39 @@ class FortranLanguageServer(SolidLanguageServer):
             log.info("Fortran LSP document symbol provider available")
 
         self.server.notify.initialized({})
-        self.completions_available.set()
 
         # Fortran Language Server is ready after initialization
-        self.server_ready.set()
         log.info("Fortran Language Server initialization complete")
+
+    @override
+    def request_text_document_diagnostics(
+        self,
+        relative_file_path: str,
+        start_line: int = 0,
+        end_line: int = -1,
+        min_severity: int = 4,
+    ) -> list[ls_types.Diagnostic]:
+        uri = self._validate_text_document_diagnostics_request(
+            relative_file_path, start_line, end_line, min_severity
+        )
+        diagnostics_before_request = self._get_published_diagnostics_generation(uri)
+
+        with self.open_file(relative_file_path):
+            self.server.notify.did_save_text_document(
+                {
+                    LSPConstants.TEXT_DOCUMENT: {  # type: ignore
+                        LSPConstants.URI: uri,
+                    }
+                }
+            )
+            diagnostics = self._wait_for_relevant_published_diagnostics(
+                uri=uri,
+                after_generation=diagnostics_before_request,
+                timeout=self._get_published_diagnostics_wait_timeout(True),
+                allow_cached=True,
+            )
+
+        if diagnostics is None:
+            return []
+
+        return self._filter_diagnostics(diagnostics, start_line, end_line, min_severity)

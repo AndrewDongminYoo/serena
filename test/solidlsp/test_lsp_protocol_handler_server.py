@@ -95,7 +95,9 @@ def assert_jsonrpc_structure(
         )
 
 
-def assert_params_omitted(result: dict[str, Any], method: str, req_id: str, input_params: Any = None) -> None:
+def assert_params_omitted(
+    result: dict[str, Any], method: str, req_id: str, input_params: Any = None
+) -> None:
     """Assert that params field is NOT present (for Void-type methods).
 
     Args:
@@ -106,7 +108,9 @@ def assert_params_omitted(result: dict[str, Any], method: str, req_id: str, inpu
 
     """
     if "params" in result:
-        input_note = f"\nInput params: {input_params}" if input_params is not None else ""
+        input_note = (
+            f"\nInput params: {input_params}" if input_params is not None else ""
+        )
         pytest.fail(
             f"{req_id} VIOLATED: {method} method MUST omit params field entirely.{input_note}\n"
             f"Expected: No 'params' key in result\n"
@@ -117,7 +121,9 @@ def assert_params_omitted(result: dict[str, Any], method: str, req_id: str, inpu
         )
 
 
-def assert_params_equal(result: dict[str, Any], expected_params: Any, req_id: str) -> None:
+def assert_params_equal(
+    result: dict[str, Any], expected_params: Any, req_id: str
+) -> None:
     """Assert that params field equals expected value.
 
     Args:
@@ -161,26 +167,34 @@ class TestMakeNotificationParamsHandling:
         """REQ-2: Methods with explicit params MUST include them unchanged."""
         test_params = {"uri": "file:///test.py", "languageId": "python"}
         result = make_notification("textDocument/didOpen", test_params)
-        assert_jsonrpc_structure(result, "textDocument/didOpen", {"jsonrpc", "method", "params"})
+        assert_jsonrpc_structure(
+            result, "textDocument/didOpen", {"jsonrpc", "method", "params"}
+        )
         assert_params_equal(result, test_params, "REQ-2")
 
     def test_notification_with_explicit_params_list(self) -> None:
         """REQ-2: Methods with explicit params (list) MUST include them unchanged."""
         test_params = ["arg1", "arg2", "arg3"]
         result = make_notification("custom/method", test_params)
-        assert_jsonrpc_structure(result, "custom/method", {"jsonrpc", "method", "params"})
+        assert_jsonrpc_structure(
+            result, "custom/method", {"jsonrpc", "method", "params"}
+        )
         assert_params_equal(result, test_params, "REQ-2")
 
     def test_notification_with_none_params_sends_empty_dict(self) -> None:
         """REQ-3: Methods with None params MUST send params: {} (Delphi/FPC compat)."""
         result = make_notification("textDocument/didChange", None)
-        assert_jsonrpc_structure(result, "textDocument/didChange", {"jsonrpc", "method", "params"})
+        assert_jsonrpc_structure(
+            result, "textDocument/didChange", {"jsonrpc", "method", "params"}
+        )
         assert_params_equal(result, {}, "REQ-3")
 
     def test_notification_with_empty_dict_params(self) -> None:
         """REQ-2: Explicit empty dict params MUST be included unchanged."""
         result = make_notification("custom/notify", {})
-        assert_jsonrpc_structure(result, "custom/notify", {"jsonrpc", "method", "params"})
+        assert_jsonrpc_structure(
+            result, "custom/notify", {"jsonrpc", "method", "params"}
+        )
         assert_params_equal(result, {}, "REQ-2")
 
 
@@ -190,33 +204,57 @@ class TestMakeRequestParamsHandling:
     def test_shutdown_request_omits_params_entirely(self) -> None:
         """REQ-1: Void-type method 'shutdown' MUST omit params field entirely (requests)."""
         result = make_request("shutdown", request_id=1, params=None)
-        assert_jsonrpc_structure(result, "shutdown", {"jsonrpc", "method", "id"}, expected_id=1)
+        assert_jsonrpc_structure(
+            result, "shutdown", {"jsonrpc", "method", "id"}, expected_id=1
+        )
         assert_params_omitted(result, "shutdown", "REQ-1")
 
     def test_request_with_explicit_params_dict(self) -> None:
         """REQ-2: Requests with explicit params MUST include them unchanged."""
-        test_params = {"textDocument": {"uri": "file:///test.py"}, "position": {"line": 10, "character": 5}}
+        test_params = {
+            "textDocument": {"uri": "file:///test.py"},
+            "position": {"line": 10, "character": 5},
+        }
         result = make_request("textDocument/hover", request_id=42, params=test_params)
-        assert_jsonrpc_structure(result, "textDocument/hover", {"jsonrpc", "method", "id", "params"}, expected_id=42)
+        assert_jsonrpc_structure(
+            result,
+            "textDocument/hover",
+            {"jsonrpc", "method", "id", "params"},
+            expected_id=42,
+        )
         assert_params_equal(result, test_params, "REQ-2")
 
     def test_request_with_none_params_sends_empty_dict(self) -> None:
         """REQ-3: Requests with None params MUST send params: {} (Delphi/FPC compat)."""
         result = make_request("workspace/configuration", request_id=100, params=None)
-        assert_jsonrpc_structure(result, "workspace/configuration", {"jsonrpc", "method", "id", "params"}, expected_id=100)
+        assert_jsonrpc_structure(
+            result,
+            "workspace/configuration",
+            {"jsonrpc", "method", "id", "params"},
+            expected_id=100,
+        )
         assert_params_equal(result, {}, "REQ-3")
 
     def test_request_id_preservation(self) -> None:
         """Verify request_id is correctly included in result (string ID)."""
         test_id = "unique-request-123"
-        result = make_request("custom/request", request_id=test_id, params={"key": "value"})
-        assert_jsonrpc_structure(result, "custom/request", {"jsonrpc", "method", "id", "params"}, expected_id=test_id)
+        result = make_request(
+            "custom/request", request_id=test_id, params={"key": "value"}
+        )
+        assert_jsonrpc_structure(
+            result,
+            "custom/request",
+            {"jsonrpc", "method", "id", "params"},
+            expected_id=test_id,
+        )
 
     def test_request_with_explicit_params_list(self) -> None:
         """REQ-2: Requests with explicit params (list) MUST include them unchanged."""
         test_params = [1, 2, 3]
         result = make_request("custom/sum", request_id=99, params=test_params)
-        assert_jsonrpc_structure(result, "custom/sum", {"jsonrpc", "method", "id", "params"}, expected_id=99)
+        assert_jsonrpc_structure(
+            result, "custom/sum", {"jsonrpc", "method", "id", "params"}, expected_id=99
+        )
         assert_params_equal(result, test_params, "REQ-2")
 
 
@@ -227,15 +265,21 @@ class TestVoidMethodsExhaustive:
         """REQ-AI-PANEL-GAP: shutdown MUST omit params even when caller explicitly provides params."""
         explicit_params = {"key": "value", "another": "param"}
         result = make_request("shutdown", request_id=1, params=explicit_params)
-        assert_jsonrpc_structure(result, "shutdown", {"jsonrpc", "method", "id"}, expected_id=1)
-        assert_params_omitted(result, "shutdown", "REQ-AI-PANEL-GAP", input_params=explicit_params)
+        assert_jsonrpc_structure(
+            result, "shutdown", {"jsonrpc", "method", "id"}, expected_id=1
+        )
+        assert_params_omitted(
+            result, "shutdown", "REQ-AI-PANEL-GAP", input_params=explicit_params
+        )
 
     def test_exit_notification_ignores_explicit_params(self) -> None:
         """REQ-AI-PANEL-GAP: exit MUST omit params even when caller explicitly provides params."""
         explicit_params = {"unexpected": "params"}
         result = make_notification("exit", explicit_params)
         assert_jsonrpc_structure(result, "exit", {"jsonrpc", "method"})
-        assert_params_omitted(result, "exit", "REQ-AI-PANEL-GAP", input_params=explicit_params)
+        assert_params_omitted(
+            result, "exit", "REQ-AI-PANEL-GAP", input_params=explicit_params
+        )
 
     def test_only_shutdown_and_exit_are_void_methods(self) -> None:
         """REQ-BOUNDARY: Verify EXACTLY shutdown/exit are Void-type - no more, no less."""
@@ -244,7 +288,9 @@ class TestVoidMethodsExhaustive:
         exit_notif = make_notification("exit", None)
         shutdown_req = make_request("shutdown", 1, None)
 
-        assert "params" not in shutdown_notif, "shutdown notification should omit params"
+        assert (
+            "params" not in shutdown_notif
+        ), "shutdown notification should omit params"
         assert "params" not in exit_notif, "exit notification should omit params"
         assert "params" not in shutdown_req, "shutdown request should omit params"
 

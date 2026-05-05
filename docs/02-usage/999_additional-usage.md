@@ -29,4 +29,4 @@ should not occur too often, unless the task is very large or complicated.
 
 When it comes to serena AND git-worktree AND larger projects (that take longer to index),
 the recommended way is to COPY your `$ORIG_PROJECT/.serena/cache` to `$GIT_WORKTREE/.serena/cache`.
-Perform [pre-indexing of your project](./040_workflow.md#indexing) to avoid having to re-index per each worktree you create.
+Perform [pre-indexing of your project](indexing) to avoid having to re-index per each worktree you create.

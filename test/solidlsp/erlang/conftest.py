@@ -38,7 +38,9 @@ def ensure_erlang_test_repo_compiled(repo_path: str) -> None:
         return
 
     try:
-        print("Installing dependencies and compiling Erlang test repository for optimal Erlang LS performance...")
+        print(
+            "Installing dependencies and compiling Erlang test repository for optimal Erlang LS performance..."
+        )
 
         # First, install dependencies with increased timeout for CI
         print("=" * 60)
@@ -72,7 +74,9 @@ def ensure_erlang_test_repo_compiled(repo_path: str) -> None:
             print("-" * 40)
 
         if deps_result.returncode != 0:
-            print(f"⚠️  Warning: Dependencies installation failed with exit code {deps_result.returncode}")
+            print(
+                f"⚠️  Warning: Dependencies installation failed with exit code {deps_result.returncode}"
+            )
             # Continue anyway - some projects might not have dependencies
         else:
             print("✓ Dependencies installed successfully")
@@ -111,18 +115,24 @@ def ensure_erlang_test_repo_compiled(repo_path: str) -> None:
         if compile_result.returncode == 0:
             print(f"✓ Erlang test repository compiled successfully in {repo_path}")
         else:
-            print(f"⚠️  Warning: Compilation completed with exit code {compile_result.returncode}")
+            print(
+                f"⚠️  Warning: Compilation completed with exit code {compile_result.returncode}"
+            )
             # Still continue - warnings are often non-fatal
 
         print("=" * 60)
-        print(f"Total setup time: {time.time() - (start_time - compile_duration - deps_duration):.2f} seconds")
+        print(
+            f"Total setup time: {time.time() - (start_time - compile_duration - deps_duration):.2f} seconds"
+        )
         print("=" * 60)
 
     except subprocess.TimeoutExpired as e:
         print("=" * 60)
         print(f"❌ TIMEOUT: Erlang setup timed out after {e.timeout} seconds")
         print(f"Command: {' '.join(e.cmd)}")
-        print("This may indicate slow CI environment - Erlang LS may still work but with reduced functionality")
+        print(
+            "This may indicate slow CI environment - Erlang LS may still work but with reduced functionality"
+        )
 
         # Try to get partial output if available
         if hasattr(e, "stdout") and e.stdout:
@@ -138,7 +148,9 @@ def ensure_erlang_test_repo_compiled(repo_path: str) -> None:
         print("=" * 60)
 
     except FileNotFoundError:
-        print("❌ ERROR: 'rebar3' command not found - Erlang test repository may not be compiled")
+        print(
+            "❌ ERROR: 'rebar3' command not found - Erlang test repository may not be compiled"
+        )
         print("Please ensure rebar3 is installed and available in PATH")
     except Exception as e:
         print(f"❌ ERROR: Failed to prepare Erlang test repository: {e}")
@@ -159,7 +171,13 @@ def setup_erlang_test_environment():
     All output is logged for transparency and debugging.
     """
     # Get the test repo path relative to this conftest.py file
-    test_repo_path = Path(__file__).parent.parent.parent / "resources" / "repos" / "erlang" / "test_repo"
+    test_repo_path = (
+        Path(__file__).parent.parent.parent
+        / "resources"
+        / "repos"
+        / "erlang"
+        / "test_repo"
+    )
     ensure_erlang_test_repo_compiled(str(test_repo_path))
     return str(test_repo_path)
 

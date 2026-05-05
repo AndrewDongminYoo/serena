@@ -32,7 +32,9 @@ def test_extract_all_success(temp_zip_file: Path, tmp_path: Path) -> None:
 def test_include_patterns(temp_zip_file: Path, tmp_path: Path) -> None:
     """Only files matching include_patterns should be extracted."""
     dest_dir = tmp_path / "extracted"
-    extractor = SafeZipExtractor(temp_zip_file, dest_dir, verbose=False, include_patterns=["*.txt"])
+    extractor = SafeZipExtractor(
+        temp_zip_file, dest_dir, verbose=False, include_patterns=["*.txt"]
+    )
     extractor.extract_all()
 
     assert (dest_dir / "file1.txt").exists()
@@ -43,7 +45,9 @@ def test_include_patterns(temp_zip_file: Path, tmp_path: Path) -> None:
 def test_exclude_patterns(temp_zip_file: Path, tmp_path: Path) -> None:
     """Files matching exclude_patterns should be skipped."""
     dest_dir = tmp_path / "extracted"
-    extractor = SafeZipExtractor(temp_zip_file, dest_dir, verbose=False, exclude_patterns=["file2.txt"])
+    extractor = SafeZipExtractor(
+        temp_zip_file, dest_dir, verbose=False, exclude_patterns=["file2.txt"]
+    )
     extractor.extract_all()
 
     assert (dest_dir / "file1.txt").exists()

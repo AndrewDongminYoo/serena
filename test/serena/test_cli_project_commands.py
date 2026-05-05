@@ -56,7 +56,9 @@ class TestProjectCreate:
 
     def test_create_basic_with_language(self, cli_runner, temp_project_dir):
         """Test basic project creation with explicit language."""
-        result = cli_runner.invoke(ProjectCommands.create, [temp_project_dir, "--language", "python"])
+        result = cli_runner.invoke(
+            ProjectCommands.create, [temp_project_dir, "--language", "python"]
+        )
         assert result.exit_code == 0, f"Command failed: {result.output}"
         assert "Generated project" in result.output
         assert "python" in result.output.lower()
@@ -65,20 +67,29 @@ class TestProjectCreate:
         yml_path = os.path.join(temp_project_dir, ".serena", "project.yml")
         assert os.path.exists(yml_path), f"project.yml not found at {yml_path}"
 
-    def test_create_auto_detect_language(self, cli_runner, temp_project_dir_with_python_file):
+    def test_create_auto_detect_language(
+        self, cli_runner, temp_project_dir_with_python_file
+    ):
         """Test project creation with auto-detected language."""
-        result = cli_runner.invoke(ProjectCommands.create, [temp_project_dir_with_python_file])
+        result = cli_runner.invoke(
+            ProjectCommands.create, [temp_project_dir_with_python_file]
+        )
         assert result.exit_code == 0, f"Command failed: {result.output}"
         assert "Generated project" in result.output
         assert "python" in result.output.lower()
 
         # Verify project.yml was created
-        yml_path = os.path.join(temp_project_dir_with_python_file, ".serena", "project.yml")
+        yml_path = os.path.join(
+            temp_project_dir_with_python_file, ".serena", "project.yml"
+        )
         assert os.path.exists(yml_path)
 
     def test_create_with_name(self, cli_runner, temp_project_dir):
         """Test project creation with custom name and explicit language."""
-        result = cli_runner.invoke(ProjectCommands.create, [temp_project_dir, "--name", "my-custom-project", "--language", "python"])
+        result = cli_runner.invoke(
+            ProjectCommands.create,
+            [temp_project_dir, "--name", "my-custom-project", "--language", "python"],
+        )
         assert result.exit_code == 0, f"Command failed: {result.output}"
         assert "Generated project" in result.output
 
@@ -88,7 +99,9 @@ class TestProjectCreate:
 
     def test_create_with_language(self, cli_runner, temp_project_dir):
         """Test project creation with specified language."""
-        result = cli_runner.invoke(ProjectCommands.create, [temp_project_dir, "--language", "python"])
+        result = cli_runner.invoke(
+            ProjectCommands.create, [temp_project_dir, "--language", "python"]
+        )
         assert result.exit_code == 0, f"Command failed: {result.output}"
         assert "Generated project" in result.output
         assert "python" in result.output.lower()
@@ -114,27 +127,44 @@ class TestProjectCreate:
     def test_create_already_exists(self, cli_runner, temp_project_dir):
         """Test that creating a project twice fails gracefully."""
         # Create once with explicit language
-        result1 = cli_runner.invoke(ProjectCommands.create, [temp_project_dir, "--language", "python"])
+        result1 = cli_runner.invoke(
+            ProjectCommands.create, [temp_project_dir, "--language", "python"]
+        )
         assert result1.exit_code == 0
 
         # Try to create again - should fail gracefully
-        result2 = cli_runner.invoke(ProjectCommands.create, [temp_project_dir, "--language", "python"])
+        result2 = cli_runner.invoke(
+            ProjectCommands.create, [temp_project_dir, "--language", "python"]
+        )
         assert result2.exit_code != 0, "Should fail when project.yml already exists"
         assert "already exists" in result2.output.lower()
         assert "Error:" in result2.output  # Should be user-friendly error
 
-    def test_create_with_index_flag(self, cli_runner, temp_project_dir_with_python_file):
+    def test_create_with_index_flag(
+        self, cli_runner, temp_project_dir_with_python_file
+    ):
         """Test project creation with --index flag performs indexing."""
         result = cli_runner.invoke(
             ProjectCommands.create,
-            [temp_project_dir_with_python_file, "--language", "python", "--index", "--log-level", "ERROR", "--timeout", "5"],
+            [
+                temp_project_dir_with_python_file,
+                "--language",
+                "python",
+                "--index",
+                "--log-level",
+                "ERROR",
+                "--timeout",
+                "5",
+            ],
         )
         assert result.exit_code == 0, f"Command failed: {result.output}"
         assert "Generated project" in result.output
         assert "Indexing project" in result.output
 
         # Verify project.yml was created
-        yml_path = os.path.join(temp_project_dir_with_python_file, ".serena", "project.yml")
+        yml_path = os.path.join(
+            temp_project_dir_with_python_file, ".serena", "project.yml"
+        )
         assert os.path.exists(yml_path)
 
         # Verify cache directory was created (proof of indexing)
@@ -143,35 +173,60 @@ class TestProjectCreate:
 
     def test_create_without_index_flag(self, cli_runner, temp_project_dir):
         """Test that project creation without --index does NOT perform indexing."""
-        result = cli_runner.invoke(ProjectCommands.create, [temp_project_dir, "--language", "python"])
+        result = cli_runner.invoke(
+            ProjectCommands.create, [temp_project_dir, "--language", "python"]
+        )
         assert result.exit_code == 0
         assert "Generated project" in result.output
         assert "Indexing" not in result.output
 
         # Verify cache directory was NOT created
         cache_dir = os.path.join(temp_project_dir, ".serena", "cache")
-        assert not os.path.exists(cache_dir), "Cache directory should not exist without --index"
+        assert not os.path.exists(
+            cache_dir
+        ), "Cache directory should not exist without --index"
 
 
 class TestProjectIndex:
     """Tests for 'project index' command."""
 
-    def test_index_auto_creates_project_with_files(self, cli_runner, temp_project_dir_with_python_file):
+    def test_index_auto_creates_project_with_files(
+        self, cli_runner, temp_project_dir_with_python_file
+    ):
         """Test that index command auto-creates project.yml if it doesn't exist (with source files)."""
-        result = cli_runner.invoke(ProjectCommands.index, [temp_project_dir_with_python_file, "--log-level", "ERROR", "--timeout", "5"])
+        result = cli_runner.invoke(
+            ProjectCommands.index,
+            [
+                temp_project_dir_with_python_file,
+                "--log-level",
+                "ERROR",
+                "--timeout",
+                "5",
+            ],
+        )
         # Should succeed and perform indexing
         assert result.exit_code == 0, f"Command failed: {result.output}"
         assert "Auto-creating" in result.output or "Indexing" in result.output
 
         # Verify project.yml was auto-created
-        yml_path = os.path.join(temp_project_dir_with_python_file, ".serena", "project.yml")
+        yml_path = os.path.join(
+            temp_project_dir_with_python_file, ".serena", "project.yml"
+        )
         assert os.path.exists(yml_path), "project.yml should be auto-created"
 
     def test_index_with_explicit_language(self, cli_runner, temp_project_dir):
         """Test index with explicit --language for empty directory."""
         result = cli_runner.invoke(
             ProjectCommands.index,
-            [temp_project_dir, "--language", "python", "--log-level", "ERROR", "--timeout", "5"],
+            [
+                temp_project_dir,
+                "--language",
+                "python",
+                "--log-level",
+                "ERROR",
+                "--timeout",
+                "5",
+            ],
         )
         # Should succeed even without source files if language is explicit
         assert result.exit_code == 0, f"Command failed: {result.output}"
@@ -190,7 +245,9 @@ class TestProjectIndex:
         yml_path = os.path.join(temp_project_dir, ".serena", "project.yml")
         assert os.path.exists(yml_path)
 
-    def test_index_is_equivalent_to_create_with_index(self, cli_runner, temp_project_dir_with_python_file):
+    def test_index_is_equivalent_to_create_with_index(
+        self, cli_runner, temp_project_dir_with_python_file
+    ):
         """Test that 'index' behaves like 'create --index' for new projects."""
         # Use manual temp directory creation with Windows-safe cleanup
         # to avoid PermissionError on Windows CI when language servers hold file locks
@@ -205,11 +262,32 @@ class TestProjectIndex:
 
             # Run 'create --index' on dir1
             result1 = cli_runner.invoke(
-                ProjectCommands.create, [dir1, "--language", "python", "--index", "--log-level", "ERROR", "--timeout", "5"]
+                ProjectCommands.create,
+                [
+                    dir1,
+                    "--language",
+                    "python",
+                    "--index",
+                    "--log-level",
+                    "ERROR",
+                    "--timeout",
+                    "5",
+                ],
             )
 
             # Run 'index' on dir2
-            result2 = cli_runner.invoke(ProjectCommands.index, [dir2, "--language", "python", "--log-level", "ERROR", "--timeout", "5"])
+            result2 = cli_runner.invoke(
+                ProjectCommands.index,
+                [
+                    dir2,
+                    "--language",
+                    "python",
+                    "--log-level",
+                    "ERROR",
+                    "--timeout",
+                    "5",
+                ],
+            )
 
             # Both should succeed
             assert result1.exit_code == 0, f"create --index failed: {result1.output}"
@@ -236,20 +314,28 @@ class TestProjectCreateHelper:
 
     def test_create_project_helper_returns_config(self, temp_project_dir):
         """Test that _create_project returns a ProjectConfig with explicit language."""
-        config = ProjectCommands._create_project(temp_project_dir, "test-project", ("python",))
+        config = ProjectCommands._create_project(
+            temp_project_dir, "test-project", ("python",)
+        ).project_config
         assert isinstance(config, ProjectConfig)
         assert config.project_name == "test-project"
 
-    def test_create_project_helper_with_auto_detect(self, temp_project_dir_with_python_file):
+    def test_create_project_helper_with_auto_detect(
+        self, temp_project_dir_with_python_file
+    ):
         """Test _create_project with auto-detected language."""
-        config = ProjectCommands._create_project(temp_project_dir_with_python_file, "my-project", ())
+        config = ProjectCommands._create_project(
+            temp_project_dir_with_python_file, "my-project", ()
+        ).project_config
         assert isinstance(config, ProjectConfig)
         assert config.project_name == "my-project"
         assert len(config.languages) >= 1
 
     def test_create_project_helper_with_languages(self, temp_project_dir):
         """Test _create_project with language specification."""
-        config = ProjectCommands._create_project(temp_project_dir, None, ("python", "typescript"))
+        config = ProjectCommands._create_project(
+            temp_project_dir, None, ("python", "typescript")
+        ).project_config
         assert isinstance(config, ProjectConfig)
         assert len(config.languages) >= 1
 
@@ -315,8 +401,8 @@ class TestFindProjectRoot:
         finally:
             os.chdir(original_cwd)
 
-    def test_falls_back_to_cwd_when_no_markers(self, temp_project_dir):
-        """Test falls back to CWD when no markers exist within boundary."""
+    def test_falls_back_to_none_when_no_markers(self, temp_project_dir):
+        """Test falls back to None when no markers exist within boundary."""
         subdir = os.path.join(temp_project_dir, "src")
         os.makedirs(subdir)
 
@@ -324,7 +410,7 @@ class TestFindProjectRoot:
         try:
             os.chdir(subdir)
             result = find_project_root(root=temp_project_dir)
-            assert os.path.samefile(result, subdir)
+            assert result is None
         finally:
             os.chdir(original_cwd)
 

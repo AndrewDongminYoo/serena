@@ -19,14 +19,22 @@ class TaskExecutor:
     def __init__(self, name: str):
         self._task_executor_lock = threading.Lock()
         self._task_executor_queue: list[TaskExecutor.Task] = []
-        self._task_executor_thread = Thread(target=self._process_task_queue, name=name, daemon=True)
+        self._task_executor_thread = Thread(
+            target=self._process_task_queue, name=name, daemon=True
+        )
         self._task_executor_thread.start()
         self._task_executor_task_index = 1
         self._task_executor_current_task: TaskExecutor.Task | None = None
         self._task_executor_last_executed_task_info: TaskExecutor.TaskInfo | None = None
 
     class Task(ToStringMixin, Generic[T]):
-        def __init__(self, function: Callable[[], T], name: str, logged: bool = True, timeout: float | None = None):
+        def __init__(
+            self,
+            function: Callable[[], T],
+            name: str,
+            logged: bool = True,
+            timeout: float | None = None,
+        ):
             """
             :param function: the function representing the task to execute
             :param name: the name of the task
@@ -51,7 +59,9 @@ class TaskExecutor:
                 try:
                     if self.future.done():
                         if self.logged:
-                            log.info(f"Task {self.name} was already completed/cancelled; skipping execution")
+                            log.info(
+                                f"Task {self.name} was already completed/cancelled; skipping execution"
+                            )
                         return
                     with LogTime(self.name, logger=log, enabled=self.logged):
                         result = self._function()
@@ -59,7 +69,9 @@ class TaskExecutor:
                             self.future.set_result(result)
                 except Exception as e:
                     if not self.future.done():
-                        log.error(f"Error during execution of {self.name}: {e}", exc_info=e)
+                        log.error(
+                            f"Error during execution of {self.name}: {e}", exc_info=e
+                        )
                         self.future.set_exception(e)
 
             thread = Thread(target=run_task, name=self.name)
@@ -80,7 +92,7 @@ class TaskExecutor:
 
             :param timeout: the maximum time to wait in seconds; if None, use the task's own timeout
                 (which may be None to wait indefinitely)
-            :return: True if the task is done, False if the timeout was reached
+            :return: the result of the task
             """
             return self.future.result(timeout=timeout)
 
@@ -128,7 +140,9 @@ class TaskExecutor:
             with self._task_executor_lock:
                 self._task_executor_current_task = None
                 if task.logged:
-                    self._task_executor_last_executed_task_info = self.TaskInfo.from_task(task, is_running=False)
+                    self._task_executor_last_executed_task_info = (
+                        self.TaskInfo.from_task(task, is_running=False)
+                    )
 
     @dataclass
     class TaskInfo:
@@ -145,11 +159,23 @@ class TaskExecutor:
         logged: bool
 
         def finished_successfully(self) -> bool:
-            return self.future.done() and not self.future.cancelled() and self.future.exception() is None
+            return (
+                self.future.done()
+                and not self.future.cancelled()
+                and self.future.exception() is None
+            )
 
         @staticmethod
-        def from_task(task: "TaskExecutor.Task", is_running: bool) -> "TaskExecutor.TaskInfo":
-            return TaskExecutor.TaskInfo(name=task.name, is_running=is_running, future=task.future, task_id=id(task), logged=task.logged)
+        def from_task(
+            task: "TaskExecutor.Task", is_running: bool
+        ) -> "TaskExecutor.TaskInfo":
+            return TaskExecutor.TaskInfo(
+                name=task.name,
+                is_running=is_running,
+                future=task.future,
+                task_id=id(task),
+                logged=task.logged,
+            )
 
         def cancel(self) -> None:
             self.future.cancel()
@@ -164,13 +190,21 @@ class TaskExecutor:
         tasks = []
         with self._task_executor_lock:
             if self._task_executor_current_task is not None:
-                tasks.append(self.TaskInfo.from_task(self._task_executor_current_task, True))
+                tasks.append(
+                    self.TaskInfo.from_task(self._task_executor_current_task, True)
+                )
             for task in self._task_executor_queue:
                 if not task.is_done():
                     tasks.append(self.TaskInfo.from_task(task, False))
         return tasks
 
-    def issue_task(self, task: Callable[[], T], name: str | None = None, logged: bool = True, timeout: float | None = None) -> Task[T]:
+    def issue_task(
+        self,
+        task: Callable[[], T],
+        name: str | None = None,
+        logged: bool = True,
+        timeout: float | None = None,
+    ) -> Task[T]:
         """
         Issue a task to the executor for asynchronous execution.
         It is ensured that tasks are executed in the order they are issued, one after another.
@@ -190,11 +224,19 @@ class TaskExecutor:
             task_name = f"{task_prefix_name}:{name or task.__name__}"
             if logged:
                 log.info(f"Scheduling {task_name}")
-            task_obj = self.Task(function=task, name=task_name, logged=logged, timeout=timeout)
+            task_obj = self.Task(
+                function=task, name=task_name, logged=logged, timeout=timeout
+            )
             self._task_executor_queue.append(task_obj)
             return task_obj
 
-    def execute_task(self, task: Callable[[], T], name: str | None = None, logged: bool = True, timeout: float | None = None) -> T:
+    def execute_task(
+        self,
+        task: Callable[[], T],
+        name: str | None = None,
+        logged: bool = True,
+        timeout: float | None = None,
+    ) -> T:
         """
         Executes the given task synchronously via the agent's task executor.
         This is useful for tasks that need to be executed immediately and whose results are needed right away.

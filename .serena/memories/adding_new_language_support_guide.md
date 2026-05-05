@@ -100,7 +100,7 @@ class Language(str, Enum):
         match self:
             # Existing cases...
             case self.NEW_LANGUAGE:
-                return FilenameMatcher("*.newlang", "*.nl")  # File extensions
+                return FilenameMatcher(".newlang", ".nl")  # File extensions
 ```
 
 ### 2.2 Update Language Server Factory
@@ -123,7 +123,7 @@ def create(cls, config: LanguageServerConfig, repository_root_path: str) -> "Sol
 
 Create a minimal project in `test/resources/repos/new_language/test_repo/`:
 
-```log
+```
 test/resources/repos/new_language/test_repo/
 ├── main.newlang              # Main source file
 ├── lib/
@@ -143,7 +143,7 @@ Create meaningful source files that demonstrate:
 
 Example `main.newlang`:
 
-```go
+```
 import lib.helper
 
 class Calculator {

@@ -130,7 +130,12 @@ class BaseProcessor(ABC):
 class DataProcessor(BaseProcessor):
     """Concrete implementation of BaseProcessor."""
 
-    def __init__(self, name: str, config: dict[str, Any] | None = None, priority: Priority = Priority.MEDIUM):
+    def __init__(
+        self,
+        name: str,
+        config: dict[str, Any] | None = None,
+        priority: Priority = Priority.MEDIUM,
+    ):
         super().__init__(name, config)
         self.priority = priority
         self.processed_count = 0
@@ -147,14 +152,18 @@ class DataProcessor(BaseProcessor):
             return apply_rules(item)
 
         # Lambda function
-        normalize = lambda x: x / max(x) if hasattr(x, "__iter__") and len(x) > 0 else x  # noqa: F841
+        normalize = lambda x: (
+            x / max(x) if hasattr(x, "__iter__") and len(x) > 0 else x
+        )
 
         result = transform(data)
         self.processed_count += 1
         return result
 
     # Method with complex type hints
-    def batch_process(self, items: list[str | dict[str, Any] | tuple[Any, ...]]) -> dict[str, list[Any]]:
+    def batch_process(
+        self, items: list[str | dict[str, Any] | tuple[Any, ...]]
+    ) -> dict[str, list[Any]]:
         """Process multiple items in a batch."""
         results: dict[str, list[Any]] = {"success": [], "error": []}
 
@@ -363,7 +372,9 @@ class WithMeta(metaclass=Meta):
 
 
 # Factory function that creates and returns instances
-def create_processor(processor_type: str, name: str, config: dict[str, Any] | None = None) -> BaseProcessor:
+def create_processor(
+    processor_type: str, name: str, config: dict[str, Any] | None = None
+) -> BaseProcessor:
     """Factory function that creates and returns processor instances."""
     if processor_type == "data":
         return DataProcessor(name, config)
@@ -458,7 +469,13 @@ def main() -> None:
             processor.process(task.name)
 
     # Use advanced search
-    _results, _total = advanced_search(query="test", filters={"status": Status.PENDING}, sort_by="priority", page=1, include_metadata=True)
+    _results, _total = advanced_search(
+        query="test",
+        filters={"status": Status.PENDING},
+        sort_by="priority",
+        page=1,
+        include_metadata=True,
+    )
 
     # Create a tree
     root = TreeNode("root")

@@ -14,7 +14,6 @@ from sensai.util.string import ToStringMixin
 from serena.config.serena_config import SerenaPaths, ToolInclusionDefinition
 from serena.constants import (
     DEFAULT_CONTEXT,
-    DEFAULT_MODES,
     INTERNAL_MODE_YAMLS_DIR,
     SERENA_FILE_ENCODING,
     SERENAS_OWN_CONTEXT_YAMLS_DIR,
@@ -54,7 +53,16 @@ class SerenaAgentMode(ToolInclusionDefinition, ToStringMixin):
         """Print an overview of the mode."""
         print(f"{self.name}:\n {self.description}")
         if self.excluded_tools:
-            print(" excluded tools:\n  " + ", ".join(sorted(self.excluded_tools)))
+            print(" excluded tools:\n    " + ", ".join(sorted(self.excluded_tools)))
+        if self.included_optional_tools:
+            print(
+                " included optional tools:\n    "
+                + ", ".join(sorted(self.included_optional_tools))
+            )
+        if self.fixed_tools:
+            print(" fixed tools:\n    " + ", ".join(sorted(self.fixed_tools)))
+        if self.prompt:
+            print(" defines initial prompt")
 
     @classmethod
     def from_yaml(cls, yaml_path: str | Path) -> Self:
@@ -101,13 +109,19 @@ class SerenaAgentMode(ToolInclusionDefinition, ToStringMixin):
         """Loads an internal Serena mode"""
         yaml_path = os.path.join(INTERNAL_MODE_YAMLS_DIR, f"{name}.yml")
         if not os.path.exists(yaml_path):
-            raise FileNotFoundError(f"Internal mode '{name}' not found in {INTERNAL_MODE_YAMLS_DIR}")
+            raise FileNotFoundError(
+                f"Internal mode '{name}' not found in {INTERNAL_MODE_YAMLS_DIR}"
+            )
         return cls.from_yaml(yaml_path)
 
     @classmethod
     def list_registered_mode_names(cls, include_user_modes: bool = True) -> list[str]:
         """Names of all registered modes (from the corresponding YAML files in the serena repo)."""
-        modes = [f.stem for f in Path(SERENAS_OWN_MODE_YAMLS_DIR).glob("*.yml") if f.name != "mode.template.yml"]
+        modes = [
+            f.stem
+            for f in Path(SERENAS_OWN_MODE_YAMLS_DIR).glob("*.yml")
+            if f.name != "mode.template.yml"
+        ]
         if include_user_modes:
             modes += cls.list_custom_mode_names()
         return sorted(set(modes))
@@ -118,11 +132,6 @@ class SerenaAgentMode(ToolInclusionDefinition, ToStringMixin):
         return [f.stem for f in Path(SerenaPaths().user_modes_dir).glob("*.yml")]
 
     @classmethod
-    def load_default_modes(cls) -> list[Self]:
-        """Load the default modes (interactive and editing)."""
-        return [cls.from_name(mode) for mode in DEFAULT_MODES]
-
-    @classmethod
     def load(cls, name_or_path: str | Path) -> Self:
         # Check if it's a file path that exists
         path = Path(name_or_path)
@@ -131,10 +140,20 @@ class SerenaAgentMode(ToolInclusionDefinition, ToStringMixin):
 
         # If it looks like a file path but doesn't exist, raise FileNotFoundError
         name_or_path_str = str(name_or_path)
-        if os.sep in name_or_path_str or (os.altsep and os.altsep in name_or_path_str) or name_or_path_str.endswith((".yml", ".yaml")):
+        if (
+            os.sep in name_or_path_str
+            or (os.altsep and os.altsep in name_or_path_str)
+            or name_or_path_str.endswith((".yml", ".yaml"))
+        ):
             raise FileNotFoundError(f"Mode file not found: {path.resolve()}")
 
         return cls.from_name(str(name_or_path))
+
+    def has_prompt(self) -> bool:
+        """
+        :return: whether this mode defines a prompt
+        """
+        return bool(self.prompt and self.prompt.strip())
 
 
 @dataclass(kw_only=True)
@@ -240,13 +259,19 @@ class SerenaAgentContext(ToolInclusionDefinition, ToStringMixin):
 
         # If it looks like a file path but doesn't exist, raise FileNotFoundError
         name_or_path_str = str(name_or_path)
-        if os.sep in name_or_path_str or (os.altsep and os.altsep in name_or_path_str) or name_or_path_str.endswith((".yml", ".yaml")):
+        if (
+            os.sep in name_or_path_str
+            or (os.altsep and os.altsep in name_or_path_str)
+            or name_or_path_str.endswith((".yml", ".yaml"))
+        ):
             raise FileNotFoundError(f"Context file not found: {path.resolve()}")
 
         return cls.from_name(str(name_or_path))
 
     @classmethod
-    def list_registered_context_names(cls, include_user_contexts: bool = True) -> list[str]:
+    def list_registered_context_names(
+        cls, include_user_contexts: bool = True
+    ) -> list[str]:
         """Names of all registered contexts (from the corresponding YAML files in the serena repo)."""
         contexts = [f.stem for f in Path(SERENAS_OWN_CONTEXT_YAMLS_DIR).glob("*.yml")]
         if include_user_contexts:

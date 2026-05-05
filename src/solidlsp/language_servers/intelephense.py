@@ -26,9 +26,19 @@ from solidlsp.lsp_protocol_handler.lsp_types import (
 from solidlsp.settings import SolidLSPSettings
 
 from ..lsp_protocol_handler import lsp_types
-from .common import RuntimeDependency, RuntimeDependencyCollection
+from .common import (
+    RuntimeDependency,
+    RuntimeDependencyCollection,
+    build_npm_install_command,
+)
 
 log = logging.getLogger(__name__)
+
+# Version pinning convention (see eclipse_jdtls.py for the full spec):
+#   INITIAL_* — frozen forever; legacy unversioned install dir is reserved for it.
+#   DEFAULT_* — bumped on upgrades; goes into a versioned subdir.
+INITIAL_INTELEPHENSE_VERSION = "1.14.4"
+DEFAULT_INTELEPHENSE_VERSION = "1.14.4"
 
 
 class Intelephense(SolidLanguageServer):
@@ -61,24 +71,43 @@ class Intelephense(SolidLanguageServer):
                 PlatformId.WIN_x64,
                 PlatformId.WIN_arm64,
             ]
-            assert platform_id in valid_platforms, f"Platform {platform_id} is not supported by Intelephense at the moment"
+            assert (
+                platform_id in valid_platforms
+            ), f"Platform {platform_id} is not supported by Intelephense at the moment"
 
             # Verify both node and npm are installed
             is_node_installed = shutil.which("node") is not None
-            assert is_node_installed, "node is not installed or isn't in PATH. Please install NodeJS and try again."
+            assert (
+                is_node_installed
+            ), "node is not installed or isn't in PATH. Please install NodeJS and try again."
             is_npm_installed = shutil.which("npm") is not None
-            assert is_npm_installed, "npm is not installed or isn't in PATH. Please install npm and try again."
+            assert (
+                is_npm_installed
+            ), "npm is not installed or isn't in PATH. Please install npm and try again."
+            intelephense_version = self._custom_settings.get(
+                "intelephense_version", DEFAULT_INTELEPHENSE_VERSION
+            )
+            npm_registry = self._custom_settings.get("npm_registry")
 
-            # Install intelephense if not already installed
-            intelephense_ls_dir = os.path.join(self._ls_resources_dir, "php-lsp")
+            # legacy unversioned dir reserved for INITIAL; every other version goes into a versioned subdir
+            ls_dirname = (
+                "php-lsp"
+                if intelephense_version == INITIAL_INTELEPHENSE_VERSION
+                else f"php-lsp-{intelephense_version}"
+            )
+            intelephense_ls_dir = os.path.join(self._ls_resources_dir, ls_dirname)
             os.makedirs(intelephense_ls_dir, exist_ok=True)
-            intelephense_executable_path = os.path.join(intelephense_ls_dir, "node_modules", ".bin", "intelephense")
+            intelephense_executable_path = os.path.join(
+                intelephense_ls_dir, "node_modules", ".bin", "intelephense"
+            )
             if not os.path.exists(intelephense_executable_path):
                 deps = RuntimeDependencyCollection(
                     [
                         RuntimeDependency(
                             id="intelephense",
-                            command="npm install --prefix ./ intelephense@1.14.4",
+                            command=build_npm_install_command(
+                                "intelephense", intelephense_version, npm_registry
+                            ),
                             platform_id="any",
                         )
                     ]
@@ -94,7 +123,12 @@ class Intelephense(SolidLanguageServer):
         def _create_launch_command(self, core_path: str) -> list[str]:
             return [core_path, "--stdio"]
 
-    def __init__(self, config: LanguageServerConfig, repository_root_path: str, solidlsp_settings: SolidLSPSettings):
+    def __init__(
+        self,
+        config: LanguageServerConfig,
+        repository_root_path: str,
+        solidlsp_settings: SolidLSPSettings,
+    ):
         super().__init__(config, repository_root_path, None, "php", solidlsp_settings)
         self.request_id = 0
 
@@ -105,7 +139,9 @@ class Intelephense(SolidLanguageServer):
         self._ignored_dirnames = {"node_modules", "cache"}
         if self._custom_settings.get("ignore_vendor", True):
             self._ignored_dirnames.add("vendor")
-        log.info(f"Ignoring the following directories for PHP projects: {', '.join(sorted(self._ignored_dirnames))}")
+        log.info(
+            f"Ignoring the following directories for PHP projects: {', '.join(sorted(self._ignored_dirnames))}"
+        )
 
     def _create_dependency_provider(self) -> LanguageServerDependencyProvider:
         return self.DependencyProvider(self._custom_settings, self._ls_resources_dir)
@@ -121,8 +157,22 @@ class Intelephense(SolidLanguageServer):
                 "textDocument": {
                     "synchronization": {"didSave": True, "dynamicRegistration": True},
                     "definition": {"dynamicRegistration": True},
+                    "references": {"dynamicRegistration": True},
+                    "documentSymbol": {
+                        "dynamicRegistration": True,
+                        "hierarchicalDocumentSymbolSupport": True,
+                        "symbolKind": {"valueSet": list(range(1, 27))},
+                    },
+                    "hover": {
+                        "dynamicRegistration": True,
+                        "contentFormat": ["markdown", "plaintext"],
+                    },
                 },
-                "workspace": {"workspaceFolders": True, "didChangeConfiguration": {"dynamicRegistration": True}},
+                "workspace": {
+                    "workspaceFolders": True,
+                    "didChangeConfiguration": {"dynamicRegistration": True},
+                    "symbol": {"dynamicRegistration": True},
+                },
             },
             "processId": os.getpid(),
             "rootPath": repository_absolute_path,
@@ -171,24 +221,31 @@ class Intelephense(SolidLanguageServer):
         self.server.start()
         initialize_params = self._get_initialize_params(self.repository_root_path)
 
-        log.info("Sending initialize request from LSP client to LSP server and awaiting response")
+        log.info(
+            "Sending initialize request from LSP client to LSP server and awaiting response"
+        )
         init_response = self.server.send.initialize(initialize_params)
         log.info("After sent initialize params")
 
         # Verify server capabilities
-        assert "textDocumentSync" in init_response["capabilities"]
-        assert "completionProvider" in init_response["capabilities"]
-        assert "definitionProvider" in init_response["capabilities"]
+        capabilities = init_response["capabilities"]
+        assert "textDocumentSync" in capabilities
+        assert "completionProvider" in capabilities
+        assert "definitionProvider" in capabilities
+        assert (
+            "documentSymbolProvider" in capabilities
+        ), "Server must support document symbols"
 
         self.server.notify.initialized({})
-        self.completions_available.set()
 
         # Intelephense server is typically ready immediately after initialization
         # TODO: This is probably incorrect; the server does send an initialized notification, which we could wait for!
 
     @override
     # For some reason, the LS may need longer to process this, so we just retry
-    def _send_references_request(self, relative_file_path: str, line: int, column: int) -> list[lsp_types.Location] | None:
+    def _send_references_request(
+        self, relative_file_path: str, line: int, column: int
+    ) -> list[lsp_types.Location] | None:
         # TODO: The LS doesn't return references contained in other files if it doesn't sleep. This is
         #   despite the LS having processed requests already. I don't know what causes this, but sleeping
         #   one second helps. It may be that sleeping only once is enough but that's hard to reliably test.
@@ -198,7 +255,9 @@ class Intelephense(SolidLanguageServer):
         return super()._send_references_request(relative_file_path, line, column)
 
     @override
-    def _send_definition_request(self, definition_params: DefinitionParams) -> Definition | list[LocationLink] | None:
+    def _send_definition_request(
+        self, definition_params: DefinitionParams
+    ) -> Definition | list[LocationLink] | None:
         # TODO: same as above, also only a problem if the definition is in another file
         sleep(1)
         return super()._send_definition_request(definition_params)

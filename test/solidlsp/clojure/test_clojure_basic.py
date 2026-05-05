@@ -3,13 +3,20 @@ import pytest
 from serena.project import Project
 from solidlsp.ls import SolidLanguageServer
 from solidlsp.ls_config import Language
-from solidlsp.ls_types import UnifiedSymbolInformation
+from solidlsp.ls_types import SymbolKind, UnifiedSymbolInformation
 from test.conftest import language_tests_enabled
+from test.solidlsp.conftest import (
+    format_symbol_for_assert,
+    has_malformed_name,
+    request_all_symbols,
+)
 
 from . import CORE_PATH, UTILS_PATH
 
 
-@pytest.mark.skipif(not language_tests_enabled(Language.CLOJURE), reason="Clojure tests are disabled")
+@pytest.mark.skipif(
+    not language_tests_enabled(Language.CLOJURE), reason="Clojure tests are disabled"
+)
 @pytest.mark.clojure
 class TestLanguageServerBasics:
     @pytest.mark.parametrize("language_server", [Language.CLOJURE], indirect=True)
@@ -17,14 +24,18 @@ class TestLanguageServerBasics:
         """
         Test finding definition of 'greet' function call in core.clj
         """
-        result = language_server.request_definition(CORE_PATH, 20, 12)  # Position of 'greet' in (greet "World")
+        result = language_server.request_definition(
+            CORE_PATH, 20, 12
+        )  # Position of 'greet' in (greet "World")
 
         assert isinstance(result, list)
         assert len(result) >= 1
 
         definition = result[0]
         assert definition["relativePath"] == CORE_PATH
-        assert definition["range"]["start"]["line"] == 2, "Should find the definition of greet function at line 2"
+        assert (
+            definition["range"]["start"]["line"] == 2
+        ), "Should find the definition of greet function at line 2"
 
     @pytest.mark.parametrize("language_server", [Language.CLOJURE], indirect=True)
     def test_cross_file_references(self, language_server: SolidLanguageServer):
@@ -33,10 +44,13 @@ class TestLanguageServerBasics:
         """
         result = language_server.request_references(CORE_PATH, 12, 6)
 
-        assert isinstance(result, list) and len(result) >= 2, "Should find definition + usage in utils.clj"
+        assert (
+            isinstance(result, list) and len(result) >= 2
+        ), "Should find definition + usage in utils.clj"
 
         usage_found = any(
-            item["relativePath"] == UTILS_PATH and item["range"]["start"]["line"] == 6  # multiply usage in calculate-area
+            item["relativePath"] == UTILS_PATH
+            and item["range"]["start"]["line"] == 6  # multiply usage in calculate-area
             for item in result
         )
         assert usage_found, "Should find multiply usage in utils.clj"
@@ -50,20 +64,28 @@ class TestLanguageServerBasics:
             assert isinstance(result, list) and len(result) > 0
 
             completion_texts = [item["completionText"] for item in result]
-            assert any("multiply" in text for text in completion_texts), "Should find 'multiply' function in completions after 'core/'"
+            assert any(
+                "multiply" in text for text in completion_texts
+            ), "Should find 'multiply' function in completions after 'core/'"
 
     @pytest.mark.parametrize("language_server", [Language.CLOJURE], indirect=True)
     def test_document_symbols(self, language_server: SolidLanguageServer):
-        symbols, _ = language_server.request_document_symbols(CORE_PATH).get_all_symbols_and_roots()
+        symbols, _ = language_server.request_document_symbols(
+            CORE_PATH
+        ).get_all_symbols_and_roots()
 
-        assert isinstance(symbols, list) and len(symbols) >= 4, "greet, add, multiply, -main functions"
+        assert (
+            isinstance(symbols, list) and len(symbols) >= 4
+        ), "greet, add, multiply, -main functions"
 
         # Check that we find the expected function symbols
         symbol_names = [symbol["name"] for symbol in symbols]
         expected_functions = ["greet", "add", "multiply", "-main"]
 
         for func_name in expected_functions:
-            assert func_name in symbol_names, f"Should find {func_name} function in symbols"
+            assert (
+                func_name in symbol_names
+            ), f"Should find {func_name} function in symbols"
 
     @pytest.mark.parametrize("language_server", [Language.CLOJURE], indirect=True)
     def test_hover(self, language_server: SolidLanguageServer):
@@ -86,11 +108,15 @@ class TestLanguageServerBasics:
         # Search for functions containing "add"
         result = language_server.request_workspace_symbol("add")
 
-        assert isinstance(result, list) and len(result) > 0, "Should find at least one symbol containing 'add'"
+        assert (
+            isinstance(result, list) and len(result) > 0
+        ), "Should find at least one symbol containing 'add'"
 
         # Should find the 'add' function
         symbol_names = [symbol["name"] for symbol in result]
-        assert any("add" in name.lower() for name in symbol_names), f"Should find 'add' function in symbols: {symbol_names}"
+        assert any(
+            "add" in name.lower() for name in symbol_names
+        ), f"Should find 'add' function in symbols: {symbol_names}"
 
     @pytest.mark.parametrize("language_server", [Language.CLOJURE], indirect=True)
     def test_namespace_functions(self, language_server: SolidLanguageServer):
@@ -102,14 +128,21 @@ class TestLanguageServerBasics:
         assert len(result) >= 1
 
         definition = result[0]
-        assert definition["relativePath"] == CORE_PATH, "Should find the definition of greet in core.clj"
+        assert (
+            definition["relativePath"] == CORE_PATH
+        ), "Should find the definition of greet in core.clj"
 
     @pytest.mark.parametrize("language_server", [Language.CLOJURE], indirect=True)
-    def test_request_references_with_content(self, language_server: SolidLanguageServer):
+    def test_request_references_with_content(
+        self, language_server: SolidLanguageServer
+    ):
         """Test references to multiply function with content"""
         references = language_server.request_references(CORE_PATH, 12, 6)
         result = [
-            language_server.retrieve_content_around_line(ref1["relativePath"], ref1["range"]["start"]["line"], 3, 0) for ref1 in references
+            language_server.retrieve_content_around_line(
+                ref1["relativePath"], ref1["range"]["start"]["line"], 3, 0
+            )
+            for ref1 in references
         ]
 
         assert result is not None, "Should find references with content"
@@ -117,12 +150,18 @@ class TestLanguageServerBasics:
         assert len(result) >= 2, "Should find definition + usage in utils.clj"
 
         for ref in result:
-            assert ref.source_file_path is not None, "Each reference should have a source file path"
+            assert (
+                ref.source_file_path is not None
+            ), "Each reference should have a source file path"
             content_str = ref.to_display_string()
             assert len(content_str) > 0, "Content should not be empty"
 
         # Verify we find the reference in utils.clj with context
-        utils_refs = [ref for ref in result if ref.source_file_path and "utils.clj" in ref.source_file_path]
+        utils_refs = [
+            ref
+            for ref in result
+            if ref.source_file_path and "utils.clj" in ref.source_file_path
+        ]
         assert len(utils_refs) > 0, "Should find reference in utils.clj"
 
         # The context should contain the calculate-area function
@@ -161,8 +200,20 @@ class TestLanguageServerBasics:
 
         all_symbol_names = list_all_symbols(result)
 
-        expected_symbols = ["greet", "add", "multiply", "-main", "calculate-area", "format-greeting", "sum-list"]
-        found_expected = [name for name in expected_symbols if any(name in symbol_name for symbol_name in all_symbol_names)]
+        expected_symbols = [
+            "greet",
+            "add",
+            "multiply",
+            "-main",
+            "calculate-area",
+            "format-greeting",
+            "sum-list",
+        ]
+        found_expected = [
+            name
+            for name in expected_symbols
+            if any(name in symbol_name for symbol_name in all_symbol_names)
+        ]
 
         if len(found_expected) < 7:
             pytest.fail(
@@ -177,16 +228,24 @@ class TestLanguageServerBasics:
         Finds references to the 'multiply' function.
         """
         result = language_server.request_referencing_symbols(CORE_PATH, 12, 6)
-        assert isinstance(result, list) and len(result) > 0, "Should find at least one referencing symbol"
+        assert (
+            isinstance(result, list) and len(result) > 0
+        ), "Should find at least one referencing symbol"
         found_relevant_references = False
         for ref in result:
             if hasattr(ref, "symbol") and "calculate-area" in ref.symbol["name"]:
                 found_relevant_references = True
                 break
 
-        assert found_relevant_references, f"Should have found calculate-area referencing multiply, but got: {result}"
+        assert (
+            found_relevant_references
+        ), f"Should have found calculate-area referencing multiply, but got: {result}"
 
 
+@pytest.mark.skipif(
+    not language_tests_enabled(Language.CLOJURE), reason="Clojure tests are disabled"
+)
+@pytest.mark.clojure
 class TestProjectBasics:
     @pytest.mark.parametrize("project", [Language.CLOJURE], indirect=True)
     def test_retrieve_content_around_line(self, project: Project):
@@ -213,11 +272,36 @@ class TestProjectBasics:
         assert result is not None, "Pattern search should return results"
         assert len(result) > 0, "Should find at least one match for 'defn.*greet'"
 
-        core_matches = [match for match in result if match.source_file_path and "core.clj" in match.source_file_path]
+        core_matches = [
+            match
+            for match in result
+            if match.source_file_path and "core.clj" in match.source_file_path
+        ]
         assert len(core_matches) > 0, "Should find greet function in core.clj"
 
         result = project.search_source_files_for_pattern(":require")
 
         assert result is not None, "Should find require statements"
-        utils_matches = [match for match in result if match.source_file_path and "utils.clj" in match.source_file_path]
+        utils_matches = [
+            match
+            for match in result
+            if match.source_file_path and "utils.clj" in match.source_file_path
+        ]
         assert len(utils_matches) > 0, "Should find require statement in utils.clj"
+
+    @pytest.mark.parametrize("language_server", [Language.CLOJURE], indirect=True)
+    def test_bare_symbol_names(self, language_server) -> None:
+        all_symbols = request_all_symbols(language_server)
+        malformed_symbols = []
+        for s in all_symbols:
+            # clojure-lsp exposes namespace and dependency/container entries in addition to real vars/functions.
+            # Those qualified names are not the target of this regression check.
+            if s["kind"] in {SymbolKind.Namespace, SymbolKind.Struct}:
+                continue
+            if has_malformed_name(s):
+                malformed_symbols.append(s)
+        if malformed_symbols:
+            pytest.fail(
+                f"Found malformed symbols: {[format_symbol_for_assert(sym) for sym in malformed_symbols]}",
+                pytrace=False,
+            )
